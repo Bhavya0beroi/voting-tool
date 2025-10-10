@@ -337,56 +337,46 @@ def team_polls_page():
 def results_page():
     st.header("🏆 Results & History", divider='orange')
     conn = get_db_connection()
-
-    # --- FIX: New query to show live and completed polls ---
-    query = """
-        SELECT p.*, pr.name as project_name
-        FROM polls p
-        JOIN projects pr ON p.project_id = pr.id
-        LEFT JOIN votes v ON p.id = v.poll_id
-        WHERE p.status LIKE 'completed%' OR v.id IS NOT NULL
-        GROUP BY p.id
-        ORDER BY p.created_at DESC
-    """
-    result_polls = conn.execute(query).fetchall()
+    result_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
     
     if not result_polls:
-        st.info("No results to show yet. Cast a vote on a poll to see its results appear here.")
+        st.info("No results to show yet. Cast a vote to see live results here.")
         return
 
     for poll in result_polls:
         with st.container(border=True):
-            # --- FIX: Add status indicators ---
-            status = poll['status']
-            if status == 'active_team_poll':
-                st.info("Status: Voting in Progress")
-            else:
-                st.success(f"Status: {status.replace('_', ' ').title()}")
-
             st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
-            render_poll_content(poll['content_json'])
+            st.caption(f"Submitted by: {poll['submitter_name']} | Team: {poll['team']}")
             
-            st.markdown("---"); st.subheader("📊 Vote Summary")
+            st.markdown("---")
+            st.subheader("📊 Vote Summary")
+            
             votes = conn.execute("SELECT * FROM votes WHERE poll_id = ?", (poll['id'],)).fetchall()
+            
             if votes:
                 df = pd.DataFrame(votes)
+                
+                # FIX: Check for 'rating' column before calculating average
                 if 'rating' in df.columns and pd.to_numeric(df['rating'], errors='coerce').notna().any():
                     avg_rating = pd.to_numeric(df['rating'], errors='coerce').mean()
                     st.metric("Average Team Rating", f"{avg_rating:.1f} / 10")
-                vote_counts = df['vote_decision'].value_counts(); st.bar_chart(vote_counts)
-                st.caption("Comments:")
-                for vote in votes:
-                    if vote['comment']: st.write(f"- **{vote['voter_name']}:** *'{vote['comment']}'*")
+
+                # FIX: Check for 'vote_decision' column before creating chart
+                if 'vote_decision' in df.columns:
+                    vote_counts = df['vote_decision'].value_counts()
+                    st.bar_chart(vote_counts)
+                
+                if 'comment' in df.columns:
+                    st.caption("Comments:")
+                    comments_df = df[df['comment'].notna() & (df['comment'] != '')]
+                    if not comments_df.empty:
+                        for index, vote in comments_df.iterrows():
+                            st.write(f"- **{vote['voter_name']}:** *'{vote['comment']}'*")
+                    else:
+                        st.write("No comments were left.")
             else:
                 st.info("No votes have been cast for this poll yet.")
 
-            # --- FIX: Add button to close polls from results page ---
-            if status == 'active_team_poll':
-                if st.button("🔒 Finalize and Close Poll", key=f"close_from_results_{poll['id']}"):
-                    conn.execute("UPDATE polls SET status = 'completed_team_vote' WHERE id = ?", (poll['id'],))
-                    conn.commit()
-                    st.rerun()
-            
             if st.button("🔄 Start Revision", key=f"revise_{poll['id']}"):
                 st.session_state['revision_data'] = {
                     'project_name': poll['project_name'], 'submitter_name': poll['submitter_name'],
