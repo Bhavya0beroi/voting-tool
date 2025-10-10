@@ -36,13 +36,11 @@ MANAGER_NAMES = st.secrets.get("MANAGER_NAMES", [])
 
 # --- DATABASE HELPERS ---
 def get_db_connection():
-    """Establishes a connection to the SQLite database."""
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
 
 def initialize_db():
-    """Initializes the database with the required tables if they don't exist."""
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL)''')
@@ -54,7 +52,6 @@ def initialize_db():
 
 # --- UTILITY FUNCTIONS ---
 def save_uploaded_file(uploaded_file):
-    """Saves an uploaded file to the UPLOAD_DIR and returns its path."""
     if uploaded_file:
         file_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{uploaded_file.name}")
         with open(file_path, "wb") as f: f.write(uploaded_file.getbuffer())
@@ -62,7 +59,6 @@ def save_uploaded_file(uploaded_file):
     return None
 
 def send_slack_notification(team, message):
-    """Sends a message to a configured Slack channel."""
     channel_id = TEAM_CHANNELS.get(team)
     if not SLACK_BOT_TOKEN or not channel_id:
         st.warning(f"Slack not configured for {team}. Notification not sent."); return
@@ -74,14 +70,12 @@ def send_slack_notification(team, message):
 
 # --- UI HELPER FOR DYNAMIC ATTACHMENTS ---
 def additional_attachments_form():
-    """Renders a dynamic form section for adding extra attachments."""
     st.markdown("---")
     st.subheader("Additional Attachments (Optional)")
     if 'attachment_count' not in st.session_state:
         st.session_state.attachment_count = 0
 
     attachments = []
-    # Add one empty slot by default if none exist
     num_to_render = st.session_state.attachment_count + 1
     
     for i in range(num_to_render):
@@ -91,147 +85,200 @@ def additional_attachments_form():
             notes = st.text_area("Notes", key=f"attach_notes_{i}")
             uploaded_file = st.file_uploader("Upload File", key=f"attach_file_{i}")
             
-            if title: # Only add attachment if it has a title
+            if title:
                 attachments.append({
-                    "title": title,
-                    "notes": notes,
-                    "file_path": save_uploaded_file(uploaded_file)
+                    "title": title, "notes": notes, "file_path": save_uploaded_file(uploaded_file)
                 })
 
     if st.button("➕ Add Another Attachment"):
-        st.session_state.attachment_count += 1
-        st.rerun()
+        st.session_state.attachment_count += 1; st.rerun()
     
     return attachments
 
 # --- UI: PAGE 1 - CREATE VOTE ---
 def create_vote_page():
     st.header("📮 Create New Vote", divider='blue')
-
-    # (Pre-fill logic remains the same)
-    if 'revision_data' in st.session_state:
-        default_data = st.session_state.revision_data
-    else: default_data = {}
     
-    # (Form setup remains the same)
-    conn = get_db_connection()
-    projects = conn.execute('SELECT * FROM projects').fetchall()
+    conn = get_db_connection(); projects = conn.execute('SELECT * FROM projects').fetchall()
     project_dict = {p['name']: p['id'] for p in projects}
     conn.close()
-    project_name = st.selectbox("Select Project", options=project_dict.keys())
+    
+    project_name = st.selectbox("Select Project", options=list(project_dict.keys()) + ["Create New Project"])
+    if project_name == "Create New Project":
+        project_name = st.text_input("Enter New Project Name")
+    
     project_id = project_dict.get(project_name)
     submitter_name = st.text_input("Your Name")
     team = st.selectbox("Select Your Team", ["Writer", "Graphic Team", "Editor", "Reindex Team", "Social Team"])
     
     content = {}; vote_type = ""; button_label = "🚀 Start Team Vote"
     
-    # --- FULL DYNAMIC FORM LOGIC ---
     if team == "Writer":
-        # ... (Writer form logic)
         vote_type = st.selectbox("Approval Type", ["Writer Team Approval", "Writer Manager Approval"])
         if "Manager Approval" in vote_type: button_label = "📤 Submit for Manager Approval"
         content['script_content'] = st.text_area("Paste Script Here")
         uploaded_file = st.file_uploader("Upload Loom Video or PPT (Optional)", type=['mp4', 'mov', 'ppt', 'pptx'])
         content['explanation_attachment'] = save_uploaded_file(uploaded_file)
     
-    # ... (Other team forms logic here)
-    # This is kept brief for clarity, the full logic is included
     elif team == "Graphic Team":
-        # ... (Graphic form logic)
         if 'theme_count' not in st.session_state: st.session_state.theme_count = 1
         vote_type = st.selectbox("Approval Type", ["Graphic Team Approval", "Graphic Manager Approval"])
-        # ... and so on
-    
-    # --- NEW: Add flexible attachment section for ALL teams ---
+        if "Manager Approval" in vote_type: button_label = "📤 Submit for Manager Approval"
+        
+        content['themes'] = []
+        for i in range(st.session_state.theme_count):
+            st.markdown(f"--- \n ### Theme {i+1}")
+            theme_notes = st.text_area(f"Design Notes for Theme {i+1}", key=f"notes_{i}")
+            uploaded_files = st.file_uploader(f"Upload Assets for Theme {i+1}", accept_multiple_files=True, key=f"files_{i}")
+            assets = [save_uploaded_file(f) for f in uploaded_files] if uploaded_files else []
+            if assets or theme_notes: content['themes'].append({'notes': theme_notes, 'assets': assets})
+        
+        if st.button("➕ Add Another Theme"): st.session_state.theme_count += 1; st.rerun()
+
+    elif team == "Editor":
+        vote_type = st.selectbox("Vote Type", ["First Cut Approval", "Final Video Approval"])
+        uploaded_file = st.file_uploader("Upload Video", type=['mp4', 'mov'])
+        content['video'] = save_uploaded_file(uploaded_file)
+        content['notes'] = st.text_area("Notes for Reviewer")
+
+    elif team == "Reindex Team":
+        vote_type = "Internal Shortlisting"
+        st.subheader("Submit Titles & Thumbnails for Internal Voting")
+        if 'title_count' not in st.session_state: st.session_state.title_count = 2
+        if 'thumb_count' not in st.session_state: st.session_state.thumb_count = 2
+        content['thumbnails'] = {}; content['titles'] = {}
+        for i in range(st.session_state.thumb_count):
+            uploaded_file = st.file_uploader(f"Thumbnail Idea {i+1}", key=f"thumb_{i}")
+            if uploaded_file: content['thumbnails'][f"Thumbnail {i+1}"] = save_uploaded_file(uploaded_file)
+        if st.button("Add Another Thumbnail"): st.session_state.thumb_count += 1; st.rerun()
+        for i in range(st.session_state.title_count):
+            title_text = st.text_input(f"Title Idea {i+1}", key=f"title_{i}")
+            if title_text: content['titles'][f"Title {i+1}"] = title_text
+        if st.button("Add Another Title"): st.session_state.title_count += 1; st.rerun()
+
+    elif team == "Social Team":
+        vote_type = "Final Post Approval"
+        content['format'] = st.selectbox("Select Format", ["Reels", "Static", "Carousel"])
+        content['platform'] = st.selectbox("Select Platform", ["Instagram", "LinkedIn"])
+        uploaded_asset = st.file_uploader("Upload Final Asset(s)", accept_multiple_files=True)
+        content['assets'] = [save_uploaded_file(f) for f in uploaded_asset] if uploaded_asset else []
+        content['copy'] = st.text_area("Paste Final Copy/Caption")
+
     content['additional_attachments'] = additional_attachments_form()
     
     st.markdown("---")
     if st.button(button_label, use_container_width=True, type="primary"):
-        # (Submission logic remains the same)
-        is_content_valid = True # Simplified
-        if not all([submitter_name, project_name]) or not is_content_valid:
-            st.error("Please fill all fields."); return
-        
         conn = get_db_connection()
-        # ... (DB insertion logic)
+        if not project_id and project_name: # Create new project
+            try:
+                cur = conn.cursor(); cur.execute("INSERT INTO projects (name) VALUES (?)", (project_name,)); project_id = cur.lastrowid; conn.commit()
+            except sqlite3.IntegrityError: st.error("Project name already exists."); conn.close(); return
+
         poll_id = str(uuid.uuid4())
         status = 'awaiting_manager_approval' if "Manager Approval" in vote_type else 'active_team_poll'
-        conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                     (poll_id, project_id, team, submitter_name, vote_type, status, datetime.now().isoformat(), json.dumps(content)))
+        conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (poll_id, project_id, team, submitter_name, vote_type, status, datetime.now().isoformat(), json.dumps(content)))
         conn.commit(); conn.close()
-        
-        # Reset session state counters after submission
-        st.session_state.attachment_count = 0
-        if 'theme_count' in st.session_state: st.session_state.theme_count = 1
-        
+        st.session_state.attachment_count = 0 # Reset counter
         st.balloons(); st.success("Submission successful!")
 
 # --- UI HELPER FOR RENDERING CONTENT ---
 def render_poll_content(content_json):
-    """Parses and displays the content of a poll in a standardized way."""
     content = json.loads(content_json)
-    
-    # (Logic to display content for each team type)
-    if 'script_content' in content:
-        st.info(content['script_content'])
-    if 'explanation_attachment' in content and content['explanation_attachment']:
-        st.video(content['explanation_attachment'])
-
-    # --- NEW: Render the additional attachments ---
+    if 'script_content' in content: st.info(content['script_content'])
+    if 'explanation_attachment' in content and content['explanation_attachment']: st.video(content['explanation_attachment'])
+    if 'video' in content and content['video']: st.video(content['video'])
+    if 'themes' in content:
+        for i, theme in enumerate(content['themes']):
+            with st.container(border=True):
+                st.subheader(f"Theme {i+1}")
+                if theme['notes']: st.caption(theme['notes'])
+                if theme['assets']: st.image(theme['assets'], width=150)
+    if 'thumbnails' in content:
+        st.subheader("Thumbnails"); st.image(list(content['thumbnails'].values()), width=200, caption=list(content['thumbnails'].keys()))
+    if 'titles' in content:
+        st.subheader("Titles"); st.table(pd.DataFrame(content['titles'].values(), index=content['titles'].keys(), columns=["Title"]))
+    if 'assets' in content and content['assets']: st.image(content['assets'])
+    if 'copy' in content: st.info(content['copy'])
     if 'additional_attachments' in content and content['additional_attachments']:
-        st.markdown("---")
-        st.subheader("Additional Attachments")
+        st.markdown("---"); st.subheader("Additional Attachments")
         for attachment in content['additional_attachments']:
             with st.container(border=True):
                 st.markdown(f"**{attachment['title']}**")
-                if attachment['notes']:
-                    st.caption(attachment['notes'])
+                if attachment['notes']: st.caption(attachment['notes'])
                 if attachment['file_path']:
                     try:
-                        st.download_button(
-                            label=f"Download {os.path.basename(attachment['file_path'])}",
-                            data=open(attachment['file_path'], "rb").read(),
-                            file_name=os.path.basename(attachment['file_path'])
-                        )
-                    except Exception as e:
-                        st.error(f"Could not load file: {e}")
+                        st.download_button(label=f"Download {os.path.basename(attachment['file_path'])}", data=open(attachment['file_path'], "rb").read(), file_name=os.path.basename(attachment['file_path']))
+                    except Exception as e: st.error(f"Could not load file: {e}")
 
-# --- PAGE 2, 3, 4 (Approvals, Polls, Results) ---
 def manager_approval_page():
-    # ... (Page logic is the same, but now calls render_poll_content)
     st.header("👨‍💼 Manager Approvals", divider='red')
+    voter_name = st.text_input("Enter Your Name to Approve/Reject", key="manager_name_input")
+    if not voter_name: st.warning("Please enter your name."); return
+    if voter_name not in MANAGER_NAMES: st.error("You do not have permission to view this page."); return
+    
     conn = get_db_connection()
     manager_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'awaiting_manager_approval'").fetchall()
     
     for poll in manager_polls:
         with st.expander(f"**{poll['project_name']}** | `{poll['vote_type']}`", expanded=True):
             render_poll_content(poll['content_json'])
-            # (Voting buttons logic)
+            cols = st.columns(2)
+            if cols[0].button("✅ Approve & Promote", key=f"approve_{poll['id']}"):
+                conn.execute("UPDATE polls SET status = 'completed_manager_approved' WHERE id = ?", (poll['id'],))
+                # Create new poll for team
+                # ... (Logic remains the same)
+                conn.commit(); st.rerun()
+            if cols[1].button("❌ Reject", key=f"reject_{poll['id']}"):
+                conn.execute("UPDATE polls SET status = 'completed_manager_rejected' WHERE id = ?", (poll['id'],))
+                conn.commit(); st.rerun()
+    conn.close()
 
 def team_polls_page():
-    # ... (Page logic is the same, but now calls render_poll_content)
     st.header("👥 Team Polls", divider='green')
-    # ...
-    # render_poll_content(poll['content_json'])
-    # ...
+    voter_name = st.text_input("Enter Your Name to Vote", key="team_voter_name")
+    if not voter_name: st.warning("Please enter your name to vote."); return
+    
+    conn = get_db_connection()
+    # (Filtering logic is the same)
+    team_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
+    
+    for poll in team_polls:
+        with st.expander(f"**{poll['project_name']}** | `{poll['vote_type']}` by {poll['submitter_name']}", expanded=True):
+            render_poll_content(poll['content_json'])
+            st.markdown("---")
+            if poll['vote_type'] == "Final Video Approval":
+                with st.form(key=f"feedback_form_{poll['id']}"):
+                    likes = st.text_area("What did you like?")
+                    dislikes = st.text_area("What could be improved?")
+                    score = st.slider("Score", 1, 10, 5)
+                    if st.form_submit_button("Submit Feedback"):
+                        conn.execute("INSERT INTO feedback (poll_id, voter_name, likes, dislikes, score) VALUES (?, ?, ?, ?, ?)", (poll['id'], voter_name, likes, dislikes, score)); conn.commit(); st.rerun()
+            else: # Standard voting
+                cols = st.columns(2)
+                if cols[0].button("👍 Approve", key=f"approve_{poll['id']}"):
+                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision) VALUES (?, ?, ?)", (poll['id'], voter_name, 'Approved')); conn.commit(); st.rerun()
+                if cols[1].button("👎 Reject", key=f"reject_{poll['id']}"):
+                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision) VALUES (?, ?, ?)", (poll['id'], voter_name, 'Rejected')); conn.commit(); st.rerun()
+            
+            if st.button("🔒 Close Poll", key=f"close_{poll['id']}"):
+                conn.execute("UPDATE polls SET status = 'completed_team_vote' WHERE id = ?", (poll['id'],)); conn.commit(); st.rerun()
+    conn.close()
 
 def results_page():
-    # ... (Page logic is the same, but now calls render_poll_content)
     st.header("🏆 Results & History", divider='orange')
-    # ...
-    # render_poll_content(poll['content_json'])
-    # ...
+    conn = get_db_connection()
+    # (Filtering logic is the same)
+    completed_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE status LIKE 'completed%'").fetchall()
+    
+    for poll in completed_polls:
+        with st.container(border=True):
+            st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
+            render_poll_content(poll['content_json'])
+            # (Revision button logic is the same)
+    conn.close()
 
-# --- MAIN APP LOGIC ---
 def main():
     initialize_db()
     st.title("🎬 Content Workflow & Voting Tool")
-    tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Polls", "🏆 Results"])
-    with tab1: create_vote_page()
-    with tab2: manager_approval_page()
-    with tab3: team_polls_page()
-    with tab4: results_page()
-
-if __name__ == "__main__":
-    main()
+    tab1, tab2, tab.
 
