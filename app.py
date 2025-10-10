@@ -273,7 +273,19 @@ def team_polls_page():
         return
     
     conn = get_db_connection()
-    all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
+
+    # --- ENHANCEMENT: Add team filter selectbox ---
+    teams_with_polls = [row['team'] for row in conn.execute("SELECT DISTINCT team FROM polls WHERE status = 'active_team_poll'").fetchall()]
+    filter_options = ["All Teams"] + teams_with_polls
+    selected_team = st.selectbox("Filter by Team:", filter_options)
+
+    query = "SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'"
+    params = []
+    if selected_team != "All Teams":
+        query += " AND p.team = ?"
+        params.append(selected_team)
+
+    all_active_polls = conn.execute(query, params).fetchall()
     
     polls_to_vote_on = []
     polls_voted_on = []
