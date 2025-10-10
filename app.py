@@ -100,7 +100,6 @@ def additional_attachments_form():
 def create_vote_page():
     st.header("📮 Create New Vote", divider='blue')
     
-    # --- CHANGE HERE: The label for the text input is now "New Project Name" ---
     project_name = st.text_input("New Project Name")
     
     submitter_name = st.text_input("Your Name")
@@ -338,10 +337,32 @@ def team_polls_page():
 def results_page():
     st.header("🏆 Results & History", divider='orange')
     conn = get_db_connection()
-    completed_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE status LIKE 'completed%'").fetchall()
+
+    # --- FIX: New query to show live and completed polls ---
+    query = """
+        SELECT p.*, pr.name as project_name
+        FROM polls p
+        JOIN projects pr ON p.project_id = pr.id
+        LEFT JOIN votes v ON p.id = v.poll_id
+        WHERE p.status LIKE 'completed%' OR v.id IS NOT NULL
+        GROUP BY p.id
+        ORDER BY p.created_at DESC
+    """
+    result_polls = conn.execute(query).fetchall()
     
-    for poll in completed_polls:
+    if not result_polls:
+        st.info("No results to show yet. Cast a vote on a poll to see its results appear here.")
+        return
+
+    for poll in result_polls:
         with st.container(border=True):
+            # --- FIX: Add status indicators ---
+            status = poll['status']
+            if status == 'active_team_poll':
+                st.info("Status: Voting in Progress")
+            else:
+                st.success(f"Status: {status.replace('_', ' ').title()}")
+
             st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
             render_poll_content(poll['content_json'])
             
@@ -356,8 +377,16 @@ def results_page():
                 st.caption("Comments:")
                 for vote in votes:
                     if vote['comment']: st.write(f"- **{vote['voter_name']}:** *'{vote['comment']}'*")
-            else: st.info("No votes or feedback were recorded for this poll.")
+            else:
+                st.info("No votes have been cast for this poll yet.")
 
+            # --- FIX: Add button to close polls from results page ---
+            if status == 'active_team_poll':
+                if st.button("🔒 Finalize and Close Poll", key=f"close_from_results_{poll['id']}"):
+                    conn.execute("UPDATE polls SET status = 'completed_team_vote' WHERE id = ?", (poll['id'],))
+                    conn.commit()
+                    st.rerun()
+            
             if st.button("🔄 Start Revision", key=f"revise_{poll['id']}"):
                 st.session_state['revision_data'] = {
                     'project_name': poll['project_name'], 'submitter_name': poll['submitter_name'],
