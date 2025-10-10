@@ -100,7 +100,8 @@ def additional_attachments_form():
 def create_vote_page():
     st.header("📮 Create New Vote", divider='blue')
     
-    project_name = st.text_input("Enter New Project Name")
+    # --- CHANGE HERE: The label for the text input is now "New Project Name" ---
+    project_name = st.text_input("New Project Name")
     
     submitter_name = st.text_input("Your Name")
     team = st.selectbox("Select Your Team", ["Writer", "Graphic Team", "Editor", "Reindex Team", "Social Team"])
