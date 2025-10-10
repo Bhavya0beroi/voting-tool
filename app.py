@@ -22,7 +22,8 @@ if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
 # --- SLACK CONFIGURATION ---
-# IMPORTANT: Set these in your Streamlit secrets (/.streamlit/secrets.toml)
+# This section reads the values from your .streamlit/secrets.toml file
+# The change you requested is made in that file, not here.
 SLACK_BOT_TOKEN = st.secrets.get("SLACK_BOT_TOKEN", "")
 TEAM_CHANNELS = {
     "Writer": st.secrets.get("WRITER_SLACK_CHANNEL_ID", ""),
@@ -138,7 +139,6 @@ def create_vote_page():
 
     # --- Dynamic Form Generation Based on Team ---
     if team == "Writer":
-        # ... (Writer form code remains the same)
         vote_type = st.selectbox("Approval Type", ["Founder/Manager Approval", "Team Approval"])
         content['script_type'] = st.selectbox("Script Type", ["Shorts Script", "YouTube Script"])
         content['script_content'] = st.text_area("Paste Script Here")
@@ -147,7 +147,6 @@ def create_vote_page():
             content['loom_video'] = save_uploaded_file(uploaded_file) if uploaded_file else None
 
     elif team == "Graphic Team":
-        # ... (Graphic Team form code remains the same)
         vote_type = st.selectbox("Vote Type", ["Manager Approval", "Team Approval"])
         content['design_notes'] = st.text_area("Design Notes")
         uploaded_files = st.file_uploader("Upload Theme Assets (Multi-file)", accept_multiple_files=True)
@@ -155,7 +154,6 @@ def create_vote_page():
         content['gdrive_link'] = st.text_input("Or paste a Google Drive link (Optional)")
 
     elif team == "Editor":
-        # ... (Editor form code remains the same)
         vote_type = st.selectbox("Vote Type", ["First Cut Approval", "Final Video Approval"])
         uploaded_file = st.file_uploader("Upload Video", type=['mp4', 'mov'])
         content['video'] = save_uploaded_file(uploaded_file) if uploaded_file else None
@@ -166,7 +164,6 @@ def create_vote_page():
         st.subheader("Submit Titles & Thumbnails for Internal Voting")
         vote_type = "Internal Shortlisting"
         
-        # Initialize session state for dynamic fields
         if 'title_count' not in st.session_state:
             st.session_state.title_count = 2
         if 'thumb_count' not in st.session_state:
@@ -198,7 +195,6 @@ def create_vote_page():
             st.rerun()
 
     elif team == "Social Team":
-        # ... (Social Team form code remains the same)
         vote_type = "Final Post Approval"
         content['format'] = st.selectbox("Select Format", ["Reels", "Static", "Carousel"])
         content['platform'] = st.selectbox("Select Platform", ["Instagram", "LinkedIn"])
@@ -209,7 +205,6 @@ def create_vote_page():
         
     st.markdown("---")
     if st.button("🚀 Start Vote", use_container_width=True, type="primary"):
-        # ... (Submission logic remains largely the same, just handles new content format)
         is_content_valid = any(isinstance(v, str) and v.strip() for v in content.values()) or \
                            any(isinstance(v, list) and v for v in content.values()) or \
                            any(isinstance(v, dict) and v for v in content.values())
@@ -262,12 +257,10 @@ def active_polls_page():
         content = json.loads(poll['content_json'])
         with st.expander(f"**{poll['project_name']}** | `{poll['vote_type']}` by {poll['submitter_name']}", expanded=True):
             
-            # --- Render Content ---
             if poll['team'] == "Reindex Team" and poll['vote_type'] == "Internal Shortlisting":
                 if not voter_name:
                     st.warning("Please enter your name above to vote on these items.")
                 
-                # Fetch existing votes to show who voted
                 existing_votes = conn.execute("SELECT * FROM votes WHERE poll_id = ?", (poll['id'],)).fetchall()
                 
                 st.subheader("Thumbnail Shortlisting")
@@ -307,7 +300,6 @@ def active_polls_page():
                             conn.commit()
                             st.rerun()
                 
-                # Show who has voted
                 st.markdown("---")
                 st.write("**Votes Recorded:**")
                 votes_df = pd.DataFrame(existing_votes)
@@ -315,7 +307,6 @@ def active_polls_page():
                     st.dataframe(votes_df[['voter_name', 'item_id', 'vote_decision']], use_container_width=True)
 
             elif poll['team'] == "Editor" and poll['vote_type'] == "Final Video Approval":
-                # ... (Editor feedback UI remains the same)
                 st.video(content.get('video'))
                 st.markdown("---")
                 st.subheader("Submit Your Detailed Feedback")
@@ -330,8 +321,7 @@ def active_polls_page():
                             st.success("Feedback submitted!")
                         else: st.warning("Please enter your name.")
 
-            else: # Standard Approve/Reject for other teams
-                # ... (Standard display and voting logic remains the same)
+            else: # Standard Approve/Reject
                 if 'script_content' in content: st.info(content['script_content'])
                 if 'assets' in content and content['assets']:
                     valid_assets = [asset for asset in content['assets'] if asset and os.path.exists(asset)]
@@ -385,15 +375,12 @@ def results_page():
                 if votes:
                     df = pd.DataFrame(votes)
                     st.write("#### Shortlisting Results:")
-                    # Group by item and decision, then count
                     results = df.groupby(['item_id', 'vote_decision']).size().unstack(fill_value=0)
                     st.dataframe(results, use_container_width=True)
-                    # Add "Promote to Final Vote" button here in the future
                 else:
                     st.write("No votes were recorded for this poll.")
 
             elif poll['team'] == "Editor" and poll['vote_type'] == "Final Video Approval":
-                # ... (Editor results logic remains the same)
                 feedback = conn.execute("SELECT * FROM feedback WHERE poll_id = ?", (poll['id'],)).fetchall()
                 if feedback:
                     scores = [f['score'] for f in feedback]
@@ -425,7 +412,6 @@ def main():
     
     st.title("🎬 Content Workflow & Voting Tool")
 
-    # Using st.tabs for a more modern navigation feel
     tab1, tab2, tab3 = st.tabs(["📮 Create Vote", "🗳️ Active Polls", "🏆 Results"])
 
     with tab1:
