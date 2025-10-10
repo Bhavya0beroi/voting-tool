@@ -100,7 +100,6 @@ def additional_attachments_form():
 def create_vote_page():
     st.header("📮 Create New Vote", divider='blue')
     
-    # --- CHANGE HERE: Replaced dropdown with a simple text input ---
     project_name = st.text_input("Enter New Project Name")
     
     submitter_name = st.text_input("Your Name")
