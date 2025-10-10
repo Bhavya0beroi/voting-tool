@@ -266,8 +266,8 @@ def manager_approval_page():
                         conn.commit(); st.error("Submission has been rejected."); st.rerun()
     conn.close()
 
-def team_polls_page():
-    st.header("👥 Team Polls", divider='green')
+def team_voting_page():
+    st.header("👥 Team Voting", divider='green')
     voter_name = st.text_input("Enter Your Name to Vote", key="team_voter_name")
     if not voter_name: 
         st.warning("Please enter your name to see and vote on polls.")
@@ -337,31 +337,27 @@ def team_polls_page():
 def results_page():
     st.header("🏆 Results & History", divider='orange')
     conn = get_db_connection()
-    result_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
+    completed_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
     
-    if not result_polls:
+    if not completed_polls:
         st.info("No results to show yet. Cast a vote to see live results here.")
         return
 
-    for poll in result_polls:
+    for poll in completed_polls:
         with st.container(border=True):
             st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
-            st.caption(f"Submitted by: {poll['submitter_name']} | Team: {poll['team']}")
+            if poll['status'] == 'active_team_poll':
+                st.info("Status: Voting in Progress")
+            else:
+                st.success(f"Status: {poll['status'].replace('_', ' ').title()}")
             
-            st.markdown("---")
-            st.subheader("📊 Vote Summary")
-            
+            st.markdown("---"); st.subheader("📊 Vote Summary")
             votes = conn.execute("SELECT * FROM votes WHERE poll_id = ?", (poll['id'],)).fetchall()
-            
             if votes:
                 df = pd.DataFrame(votes)
-                
-                # FIX: Check for 'rating' column before calculating average
                 if 'rating' in df.columns and pd.to_numeric(df['rating'], errors='coerce').notna().any():
                     avg_rating = pd.to_numeric(df['rating'], errors='coerce').mean()
                     st.metric("Average Team Rating", f"{avg_rating:.1f} / 10")
-
-                # FIX: Check for 'vote_decision' column before creating chart
                 if 'vote_decision' in df.columns:
                     vote_counts = df['vote_decision'].value_counts()
                     st.bar_chart(vote_counts)
@@ -377,6 +373,12 @@ def results_page():
             else:
                 st.info("No votes have been cast for this poll yet.")
 
+            if poll['status'] == 'active_team_poll':
+                if st.button("🔒 Finalize and Close Poll", key=f"close_from_results_{poll['id']}"):
+                    conn.execute("UPDATE polls SET status = 'completed_team_vote' WHERE id = ?", (poll['id'],))
+                    conn.commit()
+                    st.rerun()
+
             if st.button("🔄 Start Revision", key=f"revise_{poll['id']}"):
                 st.session_state['revision_data'] = {
                     'project_name': poll['project_name'], 'submitter_name': poll['submitter_name'],
@@ -388,11 +390,12 @@ def results_page():
 def main():
     initialize_db()
     st.title("🎬 Content Workflow & Voting Tool")
-    tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Polls", "🏆 Results"])
+    # --- CHANGE HERE: Renamed the tab from "Team Polls" to "Team Voting" ---
+    tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Voting", "🏆 Results"])
 
     with tab1: create_vote_page()
     with tab2: manager_approval_page()
-    with tab3: team_polls_page()
+    with tab3: team_voting_page() # --- And updated the function call here ---
     with tab4: results_page()
 
 if __name__ == "__main__":
