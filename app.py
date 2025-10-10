@@ -100,17 +100,9 @@ def additional_attachments_form():
 def create_vote_page():
     st.header("📮 Create New Vote", divider='blue')
     
-    conn = get_db_connection(); projects = conn.execute('SELECT * FROM projects').fetchall()
-    project_dict = {p['name']: p['id'] for p in projects}
-    conn.close()
+    # --- CHANGE HERE: Replaced dropdown with a simple text input ---
+    project_name = st.text_input("Enter New Project Name")
     
-    project_options = list(project_dict.keys()) + ["Create New Project"]
-    project_name = st.selectbox("Select Project", options=project_options)
-    
-    if project_name == "Create New Project":
-        project_name = st.text_input("Enter New Project Name", key="new_project_name_input")
-    
-    project_id = project_dict.get(project_name)
     submitter_name = st.text_input("Your Name")
     team = st.selectbox("Select Your Team", ["Writer", "Graphic Team", "Editor", "Reindex Team", "Social Team"])
     
@@ -180,10 +172,20 @@ def create_vote_page():
             st.error("Please fill all required fields and upload at least one piece of content."); return
 
         conn = get_db_connection()
-        if not project_id and project_name:
-            try:
-                cur = conn.cursor(); cur.execute("INSERT INTO projects (name) VALUES (?)", (project_name,)); project_id = cur.lastrowid; conn.commit()
-            except sqlite3.IntegrityError: st.error("Project name already exists."); conn.close(); return
+        project_id = None
+        try:
+            cur = conn.cursor()
+            cur.execute("INSERT INTO projects (name) VALUES (?)", (project_name,))
+            project_id = cur.lastrowid
+            conn.commit()
+        except sqlite3.IntegrityError:
+            st.error(f"A project named '{project_name}' already exists. Please choose a unique name.")
+            conn.close()
+            return
+        except Exception as e:
+            st.error(f"A database error occurred: {e}")
+            conn.close()
+            return
 
         poll_id = str(uuid.uuid4())
         status = 'awaiting_manager_approval' if "Manager Approval" in vote_type else 'active_team_poll'
@@ -273,8 +275,7 @@ def team_polls_page():
         return
     
     conn = get_db_connection()
-
-    # --- ENHANCEMENT: Add team filter selectbox ---
+    
     teams_with_polls = [row['team'] for row in conn.execute("SELECT DISTINCT team FROM polls WHERE status = 'active_team_poll'").fetchall()]
     filter_options = ["All Teams"] + teams_with_polls
     selected_team = st.selectbox("Filter by Team:", filter_options)
