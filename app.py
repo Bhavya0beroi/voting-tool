@@ -7,6 +7,7 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import pandas as pd
 import json
+from PIL import UnidentifiedImageError
 
 # --- APP CONFIGURATION ---
 st.set_page_config(
@@ -129,7 +130,8 @@ def create_vote_page():
         for i in range(st.session_state.theme_count):
             st.markdown(f"--- \n ### Theme {i+1}")
             theme_notes = st.text_area(f"Design Notes for Theme {i+1}", key=f"notes_{i}")
-            uploaded_files = st.file_uploader(f"Upload Assets for Theme {i+1}", accept_multiple_files=True, key=f"files_{i}")
+            # FIX: Added image type restriction
+            uploaded_files = st.file_uploader(f"Upload Assets for Theme {i+1}", accept_multiple_files=True, key=f"files_{i}", type=['png', 'jpg', 'jpeg'])
             assets = [save_uploaded_file(f) for f in uploaded_files] if uploaded_files else []
             if assets or theme_notes: content['themes'].append({'notes': theme_notes, 'assets': assets})
         
@@ -137,7 +139,7 @@ def create_vote_page():
 
     elif team == "Editor":
         vote_type = st.selectbox("Vote Type", ["First Cut Approval", "Final Video Approval"])
-        uploaded_file = st.file_uploader("Upload Video", type=['mp4', 'mov'])
+        uploaded_file = st.file_uploader("Upload Video", type=['mp4', 'mov', 'avi'])
         content['video'] = save_uploaded_file(uploaded_file)
         content['notes'] = st.text_area("Notes for Reviewer")
 
@@ -148,7 +150,8 @@ def create_vote_page():
         if 'thumb_count' not in st.session_state: st.session_state.thumb_count = 2
         content['thumbnails'] = {}; content['titles'] = {}
         for i in range(st.session_state.thumb_count):
-            uploaded_file = st.file_uploader(f"Thumbnail Idea {i+1}", key=f"thumb_{i}")
+            # FIX: Added image type restriction
+            uploaded_file = st.file_uploader(f"Thumbnail Idea {i+1}", key=f"thumb_{i}", type=['png', 'jpg', 'jpeg'])
             if uploaded_file: content['thumbnails'][f"Thumbnail {i+1}"] = save_uploaded_file(uploaded_file)
         if st.button("Add Another Thumbnail"): st.session_state.thumb_count += 1; st.rerun()
         for i in range(st.session_state.title_count):
@@ -160,18 +163,18 @@ def create_vote_page():
         vote_type = "Final Post Approval"
         content['format'] = st.selectbox("Select Format", ["Reels", "Static", "Carousel"])
         content['platform'] = st.selectbox("Select Platform", ["Instagram", "LinkedIn"])
-        uploaded_asset = st.file_uploader("Upload Final Asset(s)", accept_multiple_files=True)
+        # FIX: Added image type restriction
+        uploaded_asset = st.file_uploader("Upload Final Asset(s)", accept_multiple_files=True, type=['png', 'jpg', 'jpeg', 'mp4', 'mov'])
         content['assets'] = [save_uploaded_file(f) for f in uploaded_asset] if uploaded_asset else []
         content['copy'] = st.text_area("Paste Final Copy/Caption")
 
-    # --- CHANGE HERE: Conditionally display the additional attachments form ---
     if team != "Graphic Team":
         content['additional_attachments'] = additional_attachments_form()
     
     st.markdown("---")
     if st.button(button_label, use_container_width=True, type="primary"):
         conn = get_db_connection()
-        if not project_id and project_name: # Create new project
+        if not project_id and project_name:
             try:
                 cur = conn.cursor(); cur.execute("INSERT INTO projects (name) VALUES (?)", (project_name,)); project_id = cur.lastrowid; conn.commit()
             except sqlite3.IntegrityError: st.error("Project name already exists."); conn.close(); return
@@ -180,12 +183,22 @@ def create_vote_page():
         status = 'awaiting_manager_approval' if "Manager Approval" in vote_type else 'active_team_poll'
         conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (poll_id, project_id, team, submitter_name, vote_type, status, datetime.now().isoformat(), json.dumps(content)))
         conn.commit(); conn.close()
-        st.session_state.attachment_count = 0 # Reset counter
+        st.session_state.attachment_count = 0
         st.balloons(); st.success("Submission successful!")
 
 # --- UI HELPER FOR RENDERING CONTENT ---
 def render_poll_content(content_json):
     content = json.loads(content_json)
+    
+    def display_image(image_path_or_list, width=None, caption=None):
+        # FIX: Added a safety net (try...except) to prevent crashes
+        try:
+            st.image(image_path_or_list, width=width, caption=caption)
+        except UnidentifiedImageError:
+            st.error("🖼️ Error: Cannot identify one or more files as a valid image.")
+        except Exception as e:
+            st.error(f"An error occurred while displaying an image: {e}")
+
     if 'script_content' in content: st.info(content['script_content'])
     if 'explanation_attachment' in content and content['explanation_attachment']: st.video(content['explanation_attachment'])
     if 'video' in content and content['video']: st.video(content['video'])
@@ -194,12 +207,12 @@ def render_poll_content(content_json):
             with st.container(border=True):
                 st.subheader(f"Theme {i+1}")
                 if theme['notes']: st.caption(theme['notes'])
-                if theme['assets']: st.image(theme['assets'], width=150)
+                if theme['assets']: display_image(theme['assets'], width=150)
     if 'thumbnails' in content:
-        st.subheader("Thumbnails"); st.image(list(content['thumbnails'].values()), width=200, caption=list(content['thumbnails'].keys()))
+        st.subheader("Thumbnails"); display_image(list(content['thumbnails'].values()), width=200, caption=list(content['thumbnails'].keys()))
     if 'titles' in content:
         st.subheader("Titles"); st.table(pd.DataFrame(content['titles'].values(), index=content['titles'].keys(), columns=["Title"]))
-    if 'assets' in content and content['assets']: st.image(content['assets'])
+    if 'assets' in content and content['assets']: display_image(content['assets'])
     if 'copy' in content: st.info(content['copy'])
     if 'additional_attachments' in content and content['additional_attachments']:
         st.markdown("---"); st.subheader("Additional Attachments")
@@ -227,7 +240,6 @@ def manager_approval_page():
             cols = st.columns(2)
             if cols[0].button("✅ Approve & Promote", key=f"approve_{poll['id']}"):
                 conn.execute("UPDATE polls SET status = 'completed_manager_approved' WHERE id = ?", (poll['id'],))
-                # Create new poll for team
                 new_poll_id = str(uuid.uuid4())
                 team_vote_type = poll['vote_type'].replace(" Manager Approval", " Team Approval")
                 conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json, parent_poll_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (new_poll_id, poll['project_id'], poll['team'], poll['submitter_name'], team_vote_type, 'active_team_poll', datetime.now().isoformat(), poll['content_json'], poll['id']))
@@ -256,7 +268,7 @@ def team_polls_page():
                     score = st.slider("Score", 1, 10, 5)
                     if st.form_submit_button("Submit Feedback"):
                         conn.execute("INSERT INTO feedback (poll_id, voter_name, likes, dislikes, score) VALUES (?, ?, ?, ?, ?)", (poll['id'], voter_name, likes, dislikes, score)); conn.commit(); st.rerun()
-            else: # Standard voting
+            else: 
                 cols = st.columns(2)
                 if cols[0].button("👍 Approve", key=f"approve_{poll['id']}"):
                     conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision) VALUES (?, ?, ?)", (poll['id'], voter_name, 'Approved')); conn.commit(); st.rerun()
@@ -284,7 +296,6 @@ def results_page():
                     'parent_poll_id': poll['id']
                 }
                 st.success("Revision started! Go to the '📮 Create Vote' tab now.")
-
     conn.close()
 
 def main():
