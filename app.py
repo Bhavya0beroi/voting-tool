@@ -337,13 +337,31 @@ def team_voting_page():
 def results_page():
     st.header("🏆 Results & History", divider='orange')
     conn = get_db_connection()
-    completed_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
+
+    # --- ENHANCEMENT: Add team filter to results page ---
+    teams_with_results = [row['team'] for row in conn.execute("SELECT DISTINCT team FROM polls WHERE status LIKE 'completed%' OR id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()]
+    filter_options = ["All Teams"] + list(set(teams_with_results))
+    selected_team = st.selectbox("Filter by Team:", filter_options, key="results_team_filter")
+
+    query = """
+        SELECT p.*, pr.name as project_name
+        FROM polls p
+        JOIN projects pr ON p.project_id = pr.id
+        WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)
+    """
+    params = []
+    if selected_team != "All Teams":
+        query += " AND p.team = ?"
+        params.append(selected_team)
     
-    if not completed_polls:
-        st.info("No results to show yet. Cast a vote to see live results here.")
+    query += " GROUP BY p.id ORDER BY p.created_at DESC"
+    result_polls = conn.execute(query, params).fetchall()
+    
+    if not result_polls:
+        st.info("No results to show for the selected filter.")
         return
 
-    for poll in completed_polls:
+    for poll in result_polls:
         with st.container(border=True):
             st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
             if poll['status'] == 'active_team_poll':
@@ -390,12 +408,11 @@ def results_page():
 def main():
     initialize_db()
     st.title("🎬 Content Workflow & Voting Tool")
-    # --- CHANGE HERE: Renamed the tab from "Team Polls" to "Team Voting" ---
     tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Voting", "🏆 Results"])
 
     with tab1: create_vote_page()
     with tab2: manager_approval_page()
-    with tab3: team_voting_page() # --- And updated the function call here ---
+    with tab3: team_voting_page()
     with tab4: results_page()
 
 if __name__ == "__main__":
