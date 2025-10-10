@@ -226,7 +226,9 @@ def manager_approval_page():
             if cols[0].button("✅ Approve & Promote", key=f"approve_{poll['id']}"):
                 conn.execute("UPDATE polls SET status = 'completed_manager_approved' WHERE id = ?", (poll['id'],))
                 # Create new poll for team
-                # ... (Logic remains the same)
+                new_poll_id = str(uuid.uuid4())
+                team_vote_type = poll['vote_type'].replace(" Manager Approval", " Team Approval")
+                conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json, parent_poll_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (new_poll_id, poll['project_id'], poll['team'], poll['submitter_name'], team_vote_type, 'active_team_poll', datetime.now().isoformat(), poll['content_json'], poll['id']))
                 conn.commit(); st.rerun()
             if cols[1].button("❌ Reject", key=f"reject_{poll['id']}"):
                 conn.execute("UPDATE polls SET status = 'completed_manager_rejected' WHERE id = ?", (poll['id'],))
@@ -239,7 +241,6 @@ def team_polls_page():
     if not voter_name: st.warning("Please enter your name to vote."); return
     
     conn = get_db_connection()
-    # (Filtering logic is the same)
     team_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
     
     for poll in team_polls:
@@ -267,18 +268,29 @@ def team_polls_page():
 def results_page():
     st.header("🏆 Results & History", divider='orange')
     conn = get_db_connection()
-    # (Filtering logic is the same)
     completed_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE status LIKE 'completed%'").fetchall()
     
     for poll in completed_polls:
         with st.container(border=True):
             st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
             render_poll_content(poll['content_json'])
-            # (Revision button logic is the same)
+            # (Revision button logic would go here)
     conn.close()
 
 def main():
     initialize_db()
     st.title("🎬 Content Workflow & Voting Tool")
-    tab1, tab2, tab.
+    tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Polls", "🏆 Results"])
+
+    with tab1:
+        create_vote_page()
+    with tab2:
+        manager_approval_page()
+    with tab3:
+        team_polls_page()
+    with tab4:
+        results_page()
+
+if __name__ == "__main__":
+    main()
 
