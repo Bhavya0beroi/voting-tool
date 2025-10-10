@@ -180,7 +180,7 @@ def create_vote_page():
             st.error("Please fill all required fields and upload at least one piece of content."); return
 
         conn = get_db_connection()
-        if not project_id and project_name: # Create new project
+        if not project_id and project_name:
             try:
                 cur = conn.cursor(); cur.execute("INSERT INTO projects (name) VALUES (?)", (project_name,)); project_id = cur.lastrowid; conn.commit()
             except sqlite3.IntegrityError: st.error("Project name already exists."); conn.close(); return
@@ -278,21 +278,20 @@ def team_polls_page():
             render_poll_content(poll['content_json'])
             st.markdown("---")
 
+            # --- FIX & ENHANCEMENT: New Voting Form ---
             with st.form(key=f"team_vote_form_{poll['id']}"):
-                comment = st.text_area("Comments (Optional)")
+                decision = st.radio("Your Decision:", ["👍 Approve", "👎 Reject"], horizontal=True)
                 rating = st.slider("Rating", 1, 10, 5)
+                comment = st.text_area("Comments (Optional)")
                 
-                cols = st.columns(2)
-                approve_button = cols[0].form_submit_button("👍 Approve")
-                reject_button = cols[1].form_submit_button("👎 Reject")
+                submitted = st.form_submit_button("Submit Vote")
 
-                if approve_button:
-                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)", (poll['id'], voter_name, 'Approved', comment, rating))
-                    conn.commit(); st.success("Your 'Approve' vote is recorded!"); st.rerun()
-
-                if reject_button:
-                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)", (poll['id'], voter_name, 'Rejected', comment, rating))
-                    conn.commit(); st.warning("Your 'Reject' vote is recorded."); st.rerun()
+                if submitted:
+                    vote_decision = "Approved" if decision == "👍 Approve" else "Rejected"
+                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)", (poll['id'], voter_name, vote_decision, comment, rating))
+                    conn.commit()
+                    st.success(f"Your '{vote_decision}' vote is recorded!"); 
+                    st.rerun()
 
             if st.button("🔒 Close Poll", key=f"close_{poll['id']}"):
                 conn.execute("UPDATE polls SET status = 'completed_team_vote' WHERE id = ?", (poll['id'],)); conn.commit(); st.rerun()
