@@ -46,7 +46,6 @@ def initialize_db():
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL)''')
-    # --- NEW: Added parent_poll_id for tracking revisions ---
     c.execute('''CREATE TABLE IF NOT EXISTS polls (id TEXT PRIMARY KEY, project_id INTEGER, team TEXT NOT NULL, submitter_name TEXT NOT NULL, vote_type TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, content_json TEXT, parent_poll_id TEXT, FOREIGN KEY (project_id) REFERENCES projects (id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS votes (id INTEGER PRIMARY KEY AUTOINCREMENT, poll_id TEXT, voter_name TEXT NOT NULL, vote_decision TEXT NOT NULL, item_id TEXT, FOREIGN KEY (poll_id) REFERENCES polls (id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, poll_id TEXT, voter_name TEXT NOT NULL, likes TEXT, dislikes TEXT, score INTEGER, FOREIGN KEY (poll_id) REFERENCES polls (id))''')
@@ -103,11 +102,12 @@ def create_vote_page():
     # --- FULL DYNAMIC FORM LOGIC ---
     if team == "Writer":
         vote_type = st.selectbox("Approval Type", ["Writer Team Approval", "Writer Manager Approval"])
-        if "Manager Approval" in vote_type: button_label = "📤 Submit for Manager Approval"
-        content['script_content'] = st.text_area("Paste Script Here")
         if "Manager Approval" in vote_type:
-            uploaded_file = st.file_uploader("Upload Loom/Explanation Video (Optional)")
-            content['loom_video'] = save_uploaded_file(uploaded_file)
+            button_label = "📤 Submit for Manager Approval"
+        content['script_content'] = st.text_area("Paste Script Here")
+        # --- CHANGE HERE: This uploader is now available for BOTH team and manager approval ---
+        uploaded_file = st.file_uploader("Upload Loom Video or PPT (Optional)", type=['mp4', 'mov', 'ppt', 'pptx'])
+        content['explanation_attachment'] = save_uploaded_file(uploaded_file)
     
     elif team == "Graphic Team":
         if 'theme_count' not in st.session_state: st.session_state.theme_count = 1
@@ -161,7 +161,6 @@ def create_vote_page():
             st.error("Please fill all required fields and upload content."); return
         
         conn = get_db_connection()
-        # Create project if it's new
         if project_name not in project_dict:
             try:
                 cur = conn.cursor(); cur.execute("INSERT INTO projects (name) VALUES (?)", (project_name,)); project_id = cur.lastrowid; conn.commit()
@@ -201,7 +200,7 @@ def manager_approval_page():
 
     for poll in manager_polls:
         with st.expander(f"**{poll['project_name']}** | `{poll['vote_type']}` by {poll['submitter_name']}", expanded=True):
-            # Render content... 
+            # (Content rendering would go here)
             st.markdown("---")
             cols = st.columns(2)
             if cols[0].button("✅ Approve & Promote to Team Vote", key=f"approve_{poll['id']}", use_container_width=True):
@@ -274,7 +273,6 @@ def results_page():
             st.subheader(f"{status_emoji} {poll['project_name']} - `{poll['vote_type']}`")
             st.caption(f"Status: **{status_text}** | Submitted by {poll['submitter_name']}")
             
-            # --- NEW: "Start Revision" Button ---
             st.markdown("---")
             if st.button("🔄 Start Revision", key=f"revise_{poll['id']}"):
                 st.session_state['revision_data'] = {
