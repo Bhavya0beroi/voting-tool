@@ -164,7 +164,9 @@ def create_vote_page():
         content['assets'] = [save_uploaded_file(f) for f in uploaded_asset] if uploaded_asset else []
         content['copy'] = st.text_area("Paste Final Copy/Caption")
 
-    content['additional_attachments'] = additional_attachments_form()
+    # --- CHANGE HERE: Conditionally display the additional attachments form ---
+    if team != "Graphic Team":
+        content['additional_attachments'] = additional_attachments_form()
     
     st.markdown("---")
     if st.button(button_label, use_container_width=True, type="primary"):
@@ -274,7 +276,15 @@ def results_page():
         with st.container(border=True):
             st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
             render_poll_content(poll['content_json'])
-            # (Revision button logic would go here)
+            if st.button("🔄 Start Revision", key=f"revise_{poll['id']}"):
+                st.session_state['revision_data'] = {
+                    'project_name': poll['project_name'],
+                    'submitter_name': poll['submitter_name'],
+                    'team': poll['team'],
+                    'parent_poll_id': poll['id']
+                }
+                st.success("Revision started! Go to the '📮 Create Vote' tab now.")
+
     conn.close()
 
 def main():
