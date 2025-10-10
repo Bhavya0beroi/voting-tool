@@ -337,32 +337,46 @@ def team_voting_page():
 def results_page():
     st.header("🏆 Results & History", divider='orange')
     conn = get_db_connection()
-    result_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
     
-    teams_with_results = [row['team'] for row in conn.execute("SELECT DISTINCT team FROM polls WHERE status LIKE 'completed%' OR id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()]
-    filter_options = ["All Teams"] + list(set(teams_with_results))
-    selected_team = st.selectbox("Filter by Team:", filter_options, key="results_team_filter")
-
+    # Query for all polls that should be in the results
+    result_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
+    
     if not result_polls:
-        st.info("No results to show yet. Cast a vote to see live results here.")
+        st.info("No results to show yet. Cast a vote on a poll to see its results appear here.")
+        conn.close()
         return
 
+    # Create a list of teams for the filter dropdown
+    teams_with_results = list(set([poll['team'] for poll in result_polls]))
+    filter_options = ["All Teams"] + teams_with_results
+    selected_team = st.selectbox("Filter by Team:", filter_options, key="results_team_filter")
+
+    # Filter and display polls
     for poll in result_polls:
         if selected_team == "All Teams" or poll['team'] == selected_team:
             with st.container(border=True):
                 st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
+                
+                # Display status
                 if poll['status'] == 'active_team_poll':
                     st.info("Status: Voting in Progress")
                 else:
                     st.success(f"Status: {poll['status'].replace('_', ' ').title()}")
                 
-                st.markdown("---"); st.subheader("📊 Vote Summary")
+                st.markdown("---")
+                st.subheader("📊 Vote Summary")
+                
                 votes = conn.execute("SELECT * FROM votes WHERE poll_id = ?", (poll['id'],)).fetchall()
-                if votes:
+                
+                if not votes:
+                    st.info("No votes have been cast for this poll yet.")
+                else:
                     df = pd.DataFrame(votes)
+                    
                     if 'rating' in df.columns and pd.to_numeric(df['rating'], errors='coerce').notna().any():
                         avg_rating = pd.to_numeric(df['rating'], errors='coerce').mean()
                         st.metric("Average Team Rating", f"{avg_rating:.1f} / 10")
+
                     if 'vote_decision' in df.columns:
                         vote_counts = df['vote_decision'].value_counts()
                         st.bar_chart(vote_counts)
@@ -375,8 +389,6 @@ def results_page():
                                 st.write(f"- **{vote['voter_name']}:** *'{vote['comment']}'*")
                         else:
                             st.write("No comments were left.")
-                else:
-                    st.info("No votes have been cast for this poll yet.")
 
                 if poll['status'] == 'active_team_poll':
                     if st.button("🔒 Finalize and Close Poll", key=f"close_from_results_{poll['id']}"):
@@ -394,7 +406,6 @@ def results_page():
 
 def main():
     initialize_db()
-    # --- CHANGE HERE: Title updated ---
     st.title("Learnapp Voting Tool")
     tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Voting", "🏆 Results"])
 
