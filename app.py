@@ -268,34 +268,59 @@ def manager_approval_page():
 def team_polls_page():
     st.header("👥 Team Polls", divider='green')
     voter_name = st.text_input("Enter Your Name to Vote", key="team_voter_name")
-    if not voter_name: st.warning("Please enter your name to vote."); return
+    if not voter_name: 
+        st.warning("Please enter your name to see and vote on polls.")
+        return
     
     conn = get_db_connection()
-    team_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
+    all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
     
-    for poll in team_polls:
-        with st.expander(f"**{poll['project_name']}** | `{poll['vote_type']}` by {poll['submitter_name']}", expanded=True):
-            render_poll_content(poll['content_json'])
-            st.markdown("---")
+    polls_to_vote_on = []
+    polls_voted_on = []
 
-            # --- FIX & ENHANCEMENT: New Voting Form ---
-            with st.form(key=f"team_vote_form_{poll['id']}"):
-                decision = st.radio("Your Decision:", ["👍 Approve", "👎 Reject"], horizontal=True)
-                rating = st.slider("Rating", 1, 10, 5)
-                comment = st.text_area("Comments (Optional)")
-                
-                submitted = st.form_submit_button("Submit Vote")
+    for poll in all_active_polls:
+        existing_vote = conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (poll['id'], voter_name)).fetchone()
+        if existing_vote:
+            polls_voted_on.append(poll)
+        else:
+            polls_to_vote_on.append(poll)
 
-                if submitted:
-                    vote_decision = "Approved" if decision == "👍 Approve" else "Rejected"
-                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)", (poll['id'], voter_name, vote_decision, comment, rating))
-                    conn.commit()
-                    st.success(f"Your '{vote_decision}' vote is recorded!"); 
-                    st.rerun()
+    st.subheader("Action Required: Your Polls to Vote On", divider='blue')
+    if not polls_to_vote_on:
+        st.success("✅ You are all caught up! No polls are waiting for your vote.")
+    else:
+        for poll in polls_to_vote_on:
+            with st.container(border=True):
+                st.markdown(f"**{poll['project_name']}** | `{poll['vote_type']}` by {poll['submitter_name']}")
+                render_poll_content(poll['content_json'])
+                st.markdown("---")
 
-            if st.button("🔒 Close Poll", key=f"close_{poll['id']}"):
-                conn.execute("UPDATE polls SET status = 'completed_team_vote' WHERE id = ?", (poll['id'],)); conn.commit(); st.rerun()
+                with st.form(key=f"team_vote_form_{poll['id']}"):
+                    decision = st.radio("Your Decision:", ["👍 Approve", "👎 Reject"], horizontal=True, key=f"decision_{poll['id']}")
+                    rating = st.slider("Rating", 1, 10, 5, key=f"rating_{poll['id']}")
+                    comment = st.text_area("Comments (Optional)", key=f"comment_{poll['id']}")
+                    
+                    submitted = st.form_submit_button("Submit Vote")
+
+                    if submitted:
+                        vote_decision = "Approved" if decision == "👍 Approve" else "Rejected"
+                        conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)", (poll['id'], voter_name, vote_decision, comment, rating))
+                        conn.commit()
+                        st.success(f"Your '{vote_decision}' vote is recorded!"); 
+                        st.rerun()
+    
+    st.markdown("---")
+    with st.expander("Polls You've Already Voted On"):
+        if not polls_voted_on:
+            st.info("You haven't voted on any active polls yet.")
+        else:
+            for poll in polls_voted_on:
+                my_vote = conn.execute("SELECT * FROM votes WHERE poll_id = ? AND voter_name = ?", (poll['id'], voter_name)).fetchone()
+                if my_vote:
+                    st.markdown(f"**{poll['project_name']}** | `{poll['vote_type']}` - You voted: **{my_vote['vote_decision']}**")
+
     conn.close()
+
 
 def results_page():
     st.header("🏆 Results & History", divider='orange')
