@@ -338,33 +338,28 @@ def results_page():
     st.header("🏆 Results & History", divider='orange')
     conn = get_db_connection()
     
-    # Query for all polls that should be in the results
     result_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
     
-    if not result_polls:
-        st.info("No results to show yet. Cast a vote on a poll to see its results appear here.")
-        conn.close()
-        return
-
-    # Create a list of teams for the filter dropdown
     teams_with_results = list(set([poll['team'] for poll in result_polls]))
     filter_options = ["All Teams"] + teams_with_results
     selected_team = st.selectbox("Filter by Team:", filter_options, key="results_team_filter")
 
-    # Filter and display polls
+    if not result_polls:
+        st.info("No results to show yet. Cast a vote to see live results here.")
+        conn.close()
+        return
+
     for poll in result_polls:
         if selected_team == "All Teams" or poll['team'] == selected_team:
             with st.container(border=True):
                 st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
                 
-                # Display status
                 if poll['status'] == 'active_team_poll':
                     st.info("Status: Voting in Progress")
                 else:
                     st.success(f"Status: {poll['status'].replace('_', ' ').title()}")
                 
-                st.markdown("---")
-                st.subheader("📊 Vote Summary")
+                st.markdown("---"); st.subheader("📊 Vote Summary")
                 
                 votes = conn.execute("SELECT * FROM votes WHERE poll_id = ?", (poll['id'],)).fetchall()
                 
@@ -378,8 +373,10 @@ def results_page():
                         st.metric("Average Team Rating", f"{avg_rating:.1f} / 10")
 
                     if 'vote_decision' in df.columns:
-                        vote_counts = df['vote_decision'].value_counts()
-                        st.bar_chart(vote_counts)
+                        team_votes_df = df[df['vote_decision'].isin(['Approved', 'Rejected'])]
+                        if not team_votes_df.empty:
+                            vote_counts = team_votes_df['vote_decision'].value_counts()
+                            st.bar_chart(vote_counts)
                     
                     if 'comment' in df.columns:
                         st.caption("Comments:")
