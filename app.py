@@ -274,19 +274,7 @@ def team_voting_page():
         return
     
     conn = get_db_connection()
-    
-    teams_with_polls = [row['team'] for row in conn.execute("SELECT DISTINCT team FROM polls WHERE status = 'active_team_poll'").fetchall()]
-    filter_options = ["All Teams"] + teams_with_polls
-    # --- FIX: Added a unique key to the selectbox to prevent duplicate ID errors ---
-    selected_team = st.selectbox("Filter by Team:", filter_options, key="team_voting_filter")
-
-    query = "SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'"
-    params = []
-    if selected_team != "All Teams":
-        query += " AND p.team = ?"
-        params.append(selected_team)
-
-    all_active_polls = conn.execute(query, params).fetchall()
+    all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
     
     polls_to_vote_on = []
     polls_voted_on = []
@@ -299,25 +287,31 @@ def team_voting_page():
             polls_to_vote_on.append(poll)
 
     st.subheader("Action Required: Your Polls to Vote On", divider='blue')
+
     if not polls_to_vote_on:
         st.success("✅ You are all caught up! No polls are waiting for your vote.")
     else:
-        for poll in polls_to_vote_on:
+        poll_options = {f"{p['project_name']} - {p['vote_type']} (by {p['submitter_name']})": p for p in polls_to_vote_on}
+        selected_poll_title = st.selectbox("Select a Poll to Vote On:", options=["-- Please select --"] + list(poll_options.keys()))
+
+        if selected_poll_title != "-- Please select --":
+            selected_poll = poll_options[selected_poll_title]
+            
             with st.container(border=True):
-                st.markdown(f"**{poll['project_name']}** | `{poll['vote_type']}` by {poll['submitter_name']}")
-                render_poll_content(poll['content_json'])
+                st.markdown(f"### Voting on: {selected_poll_title}")
+                render_poll_content(selected_poll['content_json'])
                 st.markdown("---")
 
-                with st.form(key=f"team_vote_form_{poll['id']}"):
-                    decision = st.radio("Your Decision:", ["👍 Approve", "👎 Reject"], horizontal=True, key=f"decision_{poll['id']}")
-                    rating = st.slider("Rating", 1, 10, 5, key=f"rating_{poll['id']}")
-                    comment = st.text_area("Comments (Optional)", key=f"comment_{poll['id']}")
+                with st.form(key=f"team_vote_form_{selected_poll['id']}"):
+                    decision = st.radio("Your Decision:", ["👍 Approve", "👎 Reject"], horizontal=True)
+                    rating = st.slider("Rating", 1, 10, 5)
+                    comment = st.text_area("Comments (Optional)")
                     
                     submitted = st.form_submit_button("Submit Vote")
 
                     if submitted:
                         vote_decision = "Approved" if decision == "👍 Approve" else "Rejected"
-                        conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)", (poll['id'], voter_name, vote_decision, comment, rating))
+                        conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)", (selected_poll['id'], voter_name, vote_decision, comment, rating))
                         conn.commit()
                         st.success(f"Your '{vote_decision}' vote is recorded!"); 
                         st.rerun()
@@ -341,16 +335,15 @@ def results_page():
     
     result_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
     
-    teams_with_results = sorted(list(set([poll['team'] for poll in result_polls])))
-    team_filter_options = ["All Teams"] + teams_with_results
-    selected_team = st.selectbox("Filter by Team:", team_filter_options, key="results_team_filter")
-    
     if not result_polls:
         st.info("No results to show yet. Cast a vote to see live results here.")
         conn.close()
         return
 
-    # Dynamically populate project filter based on selected team
+    teams_with_results = sorted(list(set([poll['team'] for poll in result_polls])))
+    team_filter_options = ["All Teams"] + teams_with_results
+    selected_team = st.selectbox("Filter by Team:", team_filter_options, key="results_team_filter")
+
     if selected_team == "All Teams":
         projects_with_results = sorted(list(set([poll['project_name'] for poll in result_polls])))
     else:
