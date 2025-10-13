@@ -248,42 +248,42 @@ def manager_approval_page():
     
     is_manager = (voter_name in MANAGER_NAMES and password == MANAGER_PASSWORD)
 
-    if not voter_name: 
-        st.warning("Please enter your name to view this page.")
+    if not voter_name or not password:
+        st.warning("Please enter your name and the manager password to view this page.")
         return
+        
+    if not is_manager:
+        st.error("Incorrect name or password. Access denied.")
+        return
+
+    st.success(f"Welcome, {voter_name}! You have manager access.")
     
     conn = get_db_connection()
     manager_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'awaiting_manager_approval'").fetchall()
     
     if not manager_polls:
-        st.success("✅ No items are currently waiting for manager approval.")
+        st.info("✅ No items are currently waiting for manager approval.")
     
     for poll in manager_polls:
         with st.expander(f"**{poll['project_name']}** | `{poll['vote_type']}`", expanded=True):
             render_poll_content(poll['content_json'])
-            
-            if is_manager:
-                with st.form(key=f"manager_vote_form_{poll['id']}"):
-                    comment = st.text_area("Comments (Required for Rejection)")
-                    approve_button = st.form_submit_button("✅ Approve & Promote")
-                    reject_button = st.form_submit_button("❌ Reject")
-                    if approve_button:
-                        conn.execute("UPDATE polls SET status = 'completed_manager_approved' WHERE id = ?", (poll['id'],))
-                        new_poll_id = str(uuid.uuid4())
-                        team_vote_type = poll['vote_type'].replace(" Manager Approval", " Team Approval")
-                        conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json, parent_poll_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (new_poll_id, poll['project_id'], poll['team'], poll['submitter_name'], team_vote_type, 'active_team_poll', datetime.now().isoformat(), poll['content_json'], poll['id']))
-                        conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Approved', comment))
-                        conn.commit(); st.success("Approved and promoted!"); st.rerun()
-                    if reject_button:
-                        if not comment: st.error("A comment is required to reject.")
-                        else:
-                            conn.execute("UPDATE polls SET status = 'completed_manager_rejected' WHERE id = ?", (poll['id'],))
-                            conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Rejected', comment))
-                            conn.commit(); st.error("Submission has been rejected."); st.rerun()
-            elif password and not is_manager:
-                st.error("Incorrect password. You have view-only access.")
-            else:
-                 st.info("Enter the manager password to approve or reject.")
+            with st.form(key=f"manager_vote_form_{poll['id']}"):
+                comment = st.text_area("Comments (Required for Rejection)")
+                approve_button = st.form_submit_button("✅ Approve & Promote")
+                reject_button = st.form_submit_button("❌ Reject")
+                if approve_button:
+                    conn.execute("UPDATE polls SET status = 'completed_manager_approved' WHERE id = ?", (poll['id'],))
+                    new_poll_id = str(uuid.uuid4())
+                    team_vote_type = poll['vote_type'].replace(" Manager Approval", " Team Approval")
+                    conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json, parent_poll_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (new_poll_id, poll['project_id'], poll['team'], poll['submitter_name'], team_vote_type, 'active_team_poll', datetime.now().isoformat(), poll['content_json'], poll['id']))
+                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Approved', comment))
+                    conn.commit(); st.success("Approved and promoted!"); st.rerun()
+                if reject_button:
+                    if not comment: st.error("A comment is required to reject.")
+                    else:
+                        conn.execute("UPDATE polls SET status = 'completed_manager_rejected' WHERE id = ?", (poll['id'],))
+                        conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Rejected', comment))
+                        conn.commit(); st.error("Submission has been rejected."); st.rerun()
     conn.close()
 
 def team_voting_page():
@@ -311,38 +311,23 @@ def team_voting_page():
             with st.container(border=True):
                 st.markdown(f"### Voting on: {selected_poll_title}")
                 
-                if selected_poll['vote_type'] == "Internal Shortlisting":
-                    with st.form(key=f"reindex_shortlist_form_{selected_poll['id']}"):
-                        st.subheader("Thumbnails")
-                        thumbnails = content.get('thumbnails', {})
-                        thumb_selections = {}
-                        if thumbnails:
-                            cols = st.columns(5)
-                            col_idx = 0
-                            for thumb_name, thumb_path in thumbnails.items():
-                                with cols[col_idx]:
-                                    st.image(thumb_path, use_container_width=True)
-                                    thumb_selections[thumb_name] = st.checkbox(f"Keep {thumb_name}", key=f"thumb_cb_{selected_poll['id']}_{thumb_name}")
-                                col_idx = (col_idx + 1) % 5
+                is_multi_select = (selected_poll['vote_type'] == "Internal Shortlisting") or ('themes' in content and len(content['themes']) > 1)
+                
+                if is_multi_select:
+                    with st.form(key=f"multi_select_form_{selected_poll['id']}"):
+                        st.write("**Select all the options you approve of:**")
+                        options = []
+                        if 'themes' in content: options.extend([t['name'] for t in content['themes']])
+                        if 'thumbnails' in content: options.extend(list(content.get('thumbnails', {}).keys()))
+                        if 'titles' in content: options.extend(list(content.get('titles', {}).keys()))
                         
-                        st.markdown("---")
-                        st.subheader("Titles")
-                        titles = content.get('titles', {})
-                        title_selections = {}
-                        if titles:
-                            for title_name, title_text in titles.items():
-                                title_selections[title_name] = st.checkbox(title_text, key=f"title_cb_{selected_poll['id']}_{title_name}")
-
+                        selections = st.multiselect("Your Selections:", options)
                         submitted = st.form_submit_button("Submit Selections")
                         if submitted:
-                            kept_thumbnails = [name for name, selected in thumb_selections.items() if selected]
-                            kept_titles = [name for name, selected in title_selections.items() if selected]
-                            for thumb in kept_thumbnails:
-                                conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Keep', thumb))
-                            for title in kept_titles:
-                                 conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Keep', title))
+                            for item in selections:
+                                conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Selected', item))
                             conn.commit()
-                            st.success("Your shortlist selections have been saved!"); st.rerun()
+                            st.success("Your selections have been saved!"); st.rerun()
                 else:
                     render_poll_content(selected_poll['content_json'])
                     st.markdown("---")
