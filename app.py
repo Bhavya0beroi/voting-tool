@@ -197,7 +197,6 @@ def create_vote_page():
         conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (poll_id, project_id, team, submitter_name, vote_type, status, datetime.now().isoformat(), json.dumps(content)))
         conn.commit(); conn.close()
         
-        # Reset session state counters
         if 'attachment_count' in st.session_state: st.session_state.attachment_count = 0
         if 'reindex_thumb_count' in st.session_state: st.session_state.reindex_thumb_count = 2
         if 'reindex_title_count' in st.session_state: st.session_state.reindex_title_count = 2
@@ -307,7 +306,8 @@ def team_voting_page():
                             for thumb_name, thumb_path in thumbnails.items():
                                 with cols[col_idx]:
                                     try:
-                                        st.image(thumb_path, use_column_width=True)
+                                        # --- FIX HERE: Changed use_column_width to use_container_width ---
+                                        st.image(thumb_path, use_container_width=True)
                                         thumb_selections[thumb_name] = st.checkbox(f"Keep {thumb_name}", key=f"thumb_cb_{selected_poll['id']}_{thumb_name}")
                                     except Exception: st.error(f"Cannot display {thumb_name}")
                                 col_idx = (col_idx + 1) % 5
@@ -330,8 +330,7 @@ def team_voting_page():
                                  conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Keep', title))
                             conn.commit()
                             st.success("Your shortlist selections have been saved!"); st.rerun()
-
-                else: # Standard voting form
+                else:
                     render_poll_content(selected_poll['content_json'])
                     st.markdown("---")
                     with st.form(key=f"team_vote_form_{selected_poll['id']}"):
