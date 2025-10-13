@@ -311,8 +311,9 @@ def team_voting_page():
                         vote_decision = "Approved" if decision == "👍 Approve" else "Rejected"
                         conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)", (selected_poll['id'], voter_name, vote_decision, comment, rating))
                         conn.commit()
-                        st.success(f"Your '{vote_decision}' vote is recorded!"); 
-                        st.rerun()
+                        st.success(f"Your '{vote_decision}' vote is recorded! Thank you, {voter_name}.")
+                        st.balloons()
+                        # st.rerun() is removed here to show the success message
     
     st.markdown("---")
     with st.expander("Polls You've Already Voted On"):
