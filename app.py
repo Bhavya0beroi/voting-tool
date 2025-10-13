@@ -386,9 +386,11 @@ def results_page():
                         team_votes_df = df[df['vote_decision'].isin(['Approved', 'Rejected'])]
                         if not team_votes_df.empty:
                             vote_counts = team_votes_df['vote_decision'].value_counts()
-                            color_map = {'Approved': '#28a745', 'Rejected': '#dc3545'}
-                            colors = [color_map.get(x, '#888888') for x in vote_counts.index]
-                            st.bar_chart(vote_counts, color=colors)
+                            approve_count = vote_counts.get('Approved', 0)
+                            reject_count = vote_counts.get('Rejected', 0)
+                            approve_col, reject_col = st.columns(2)
+                            approve_col.markdown(f"### ✅ Approved: {approve_count}")
+                            reject_col.markdown(f"### ❌ Rejected: {reject_count}")
                     
                     if 'comment' in df.columns:
                         st.caption("Comments:")
