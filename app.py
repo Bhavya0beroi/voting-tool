@@ -352,7 +352,6 @@ def results_page():
     project_filter_options = ["All Projects"] + projects_with_results
     selected_project = st.selectbox("Filter by Project:", project_filter_options, key="results_project_filter")
 
-    # Filter and display polls
     for poll in result_polls:
         team_match = (selected_team == "All Teams" or poll['team'] == selected_team)
         project_match = (selected_project == "All Projects" or poll['project_name'] == selected_project)
@@ -374,7 +373,9 @@ def results_page():
                 if not votes:
                     st.info("No votes have been cast for this poll yet.")
                 else:
-                    df = pd.DataFrame(votes)
+                    # --- FIX: Convert list of Row objects to list of dicts ---
+                    votes_list = [dict(row) for row in votes]
+                    df = pd.DataFrame(votes_list)
                     
                     if 'rating' in df.columns and pd.to_numeric(df['rating'], errors='coerce').notna().any():
                         avg_rating = pd.to_numeric(df['rating'], errors='coerce').mean()
