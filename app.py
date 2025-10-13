@@ -217,11 +217,9 @@ def render_poll_content(content_json):
 
     if 'script_content' in content and content['script_content']: st.info(content['script_content'])
     if 'explanation_attachment' in content and content['explanation_attachment']: 
-        col1, col2 = st.columns([2, 1])
-        with col1: st.video(content['explanation_attachment'])
+        col1, col2 = st.columns([2, 1]); col1.video(content['explanation_attachment'])
     if 'video' in content and content['video']: 
-        col1, col2 = st.columns([2, 1])
-        with col1: st.video(content['video'])
+        col1, col2 = st.columns([2, 1]); col1.video(content['video'])
     if 'themes' in content:
         for theme in content['themes']:
             with st.container(border=True):
@@ -265,34 +263,43 @@ def manager_approval_page():
     manager_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'awaiting_manager_approval'").fetchall()
     
     if not manager_polls:
-        st.info("✅ No items are currently waiting for manager approval.")
-    
-    for poll in manager_polls:
-        with st.expander(f"**{poll['project_name']}** | `{poll['vote_type']}`", expanded=True):
-            render_poll_content(poll['content_json'])
-            with st.form(key=f"manager_vote_form_{poll['id']}"):
-                comment = st.text_area("Comments (Required for Rejection)")
-                approve_button = st.form_submit_button("✅ Approve & Promote")
-                reject_button = st.form_submit_button("❌ Reject")
-                if approve_button:
-                    conn.execute("UPDATE polls SET status = 'completed_manager_approved' WHERE id = ?", (poll['id'],))
-                    new_poll_id = str(uuid.uuid4())
-                    team_vote_type = poll['vote_type'].replace(" Manager Approval", " Team Approval")
-                    conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json, parent_poll_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (new_poll_id, poll['project_id'], poll['team'], poll['submitter_name'], team_vote_type, 'active_team_poll', datetime.now().isoformat(), poll['content_json'], poll['id']))
-                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Approved', comment))
-                    conn.commit(); st.success("Approved and promoted!"); st.rerun()
-                if reject_button:
-                    if not comment: st.error("A comment is required to reject.")
-                    else:
-                        conn.execute("UPDATE polls SET status = 'completed_manager_rejected' WHERE id = ?", (poll['id'],))
-                        conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Rejected', comment))
-                        conn.commit(); st.error("Submission has been rejected."); st.rerun()
+        st.info("✅ No items are currently waiting for your approval.")
+    else:
+        # --- NEW INBOX-STYLE UI FOR MANAGERS ---
+        poll_options = {f"{p['project_name']} - {p['vote_type']} (by {p['submitter_name']})": p for p in manager_polls}
+        selected_poll_title = st.selectbox("Select a Poll to Approve:", options=["-- Please select --"] + list(poll_options.keys()), key="manager_poll_select")
+
+        if selected_poll_title != "-- Please select --":
+            selected_poll = poll_options[selected_poll_title]
+            
+            with st.container(border=True):
+                st.markdown(f"### Approving: {selected_poll_title}")
+                render_poll_content(selected_poll['content_json'])
+                with st.form(key=f"manager_vote_form_{selected_poll['id']}"):
+                    comment = st.text_area("Comments (Required for Rejection)")
+                    approve_button = st.form_submit_button("✅ Approve & Promote")
+                    reject_button = st.form_submit_button("❌ Reject")
+                    if approve_button:
+                        conn.execute("UPDATE polls SET status = 'completed_manager_approved' WHERE id = ?", (selected_poll['id'],))
+                        new_poll_id = str(uuid.uuid4())
+                        team_vote_type = selected_poll['vote_type'].replace(" Manager Approval", " Team Approval")
+                        conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json, parent_poll_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (new_poll_id, selected_poll['project_id'], selected_poll['team'], selected_poll['submitter_name'], team_vote_type, 'active_team_poll', datetime.now().isoformat(), selected_poll['content_json'], selected_poll['id']))
+                        conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Manager Approved', comment))
+                        conn.commit(); st.success("Approved and promoted!"); st.rerun()
+                    if reject_button:
+                        if not comment: st.error("A comment is required to reject.")
+                        else:
+                            conn.execute("UPDATE polls SET status = 'completed_manager_rejected' WHERE id = ?", (selected_poll['id'],))
+                            conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Manager Rejected', comment))
+                            conn.commit(); st.error("Submission has been rejected."); st.rerun()
     conn.close()
 
 def team_voting_page():
     st.header("👥 Team Voting", divider='green')
     voter_name = st.text_input("Enter Your Name to Vote", key="team_voter_name")
-    if not voter_name: st.warning("Please enter your name to see and vote on polls."); return
+    if not voter_name: 
+        st.warning("Please enter your name to see and vote on polls.")
+        return
     
     conn = get_db_connection()
     all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
@@ -464,4 +471,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
