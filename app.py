@@ -33,6 +33,7 @@ TEAM_CHANNELS = {
     "Company-Wide": st.secrets.get("COMPANY_WIDE_SLACK_CHANNEL_ID", "")
 }
 MANAGER_NAMES = st.secrets.get("MANAGER_NAMES", [])
+MANAGER_PASSWORD = st.secrets.get("MANAGER_PASSWORD", "Learnapp.123")
 
 
 # --- DATABASE HELPERS ---
@@ -241,7 +242,12 @@ def render_poll_content(content_json):
 
 def manager_approval_page():
     st.header("👨‍💼 Manager Approvals", divider='red')
-    voter_name = st.text_input("Enter Your Name to View/Approve", key="manager_name_input")
+    
+    voter_name = st.text_input("Enter Your Name")
+    password = st.text_input("Enter Manager Password", type="password")
+    
+    is_manager = (voter_name in MANAGER_NAMES and password == MANAGER_PASSWORD)
+
     if not voter_name: 
         st.warning("Please enter your name to view this page.")
         return
@@ -256,8 +262,7 @@ def manager_approval_page():
         with st.expander(f"**{poll['project_name']}** | `{poll['vote_type']}`", expanded=True):
             render_poll_content(poll['content_json'])
             
-            # --- CHANGE HERE: Conditional UI for managers vs. viewers ---
-            if voter_name in MANAGER_NAMES:
+            if is_manager:
                 with st.form(key=f"manager_vote_form_{poll['id']}"):
                     comment = st.text_area("Comments (Required for Rejection)")
                     approve_button = st.form_submit_button("✅ Approve & Promote")
@@ -275,16 +280,16 @@ def manager_approval_page():
                             conn.execute("UPDATE polls SET status = 'completed_manager_rejected' WHERE id = ?", (poll['id'],))
                             conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Rejected', comment))
                             conn.commit(); st.error("Submission has been rejected."); st.rerun()
+            elif password and not is_manager:
+                st.error("Incorrect password. You have view-only access.")
             else:
-                st.info("This poll is awaiting approval from a manager. (View-only for non-managers)")
+                 st.info("Enter the manager password to approve or reject.")
     conn.close()
 
 def team_voting_page():
     st.header("👥 Team Voting", divider='green')
     voter_name = st.text_input("Enter Your Name to Vote", key="team_voter_name")
-    if not voter_name: 
-        st.warning("Please enter your name to see and vote on polls.")
-        return
+    if not voter_name: st.warning("Please enter your name to see and vote on polls."); return
     
     conn = get_db_connection()
     all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
