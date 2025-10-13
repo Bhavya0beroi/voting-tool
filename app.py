@@ -277,7 +277,8 @@ def team_voting_page():
     
     teams_with_polls = [row['team'] for row in conn.execute("SELECT DISTINCT team FROM polls WHERE status = 'active_team_poll'").fetchall()]
     filter_options = ["All Teams"] + teams_with_polls
-    selected_team = st.selectbox("Filter by Team:", filter_options)
+    # --- FIX: Added a unique key to the selectbox to prevent duplicate ID errors ---
+    selected_team = st.selectbox("Filter by Team:", filter_options, key="team_voting_filter")
 
     query = "SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'"
     params = []
@@ -338,30 +339,28 @@ def results_page():
     st.header("🏆 Results & History", divider='orange')
     conn = get_db_connection()
     
-    # --- ENHANCED FILTERING ---
-    all_results_query = "SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)"
-    all_results = conn.execute(all_results_query).fetchall()
-
-    if not all_results:
+    result_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
+    
+    teams_with_results = sorted(list(set([poll['team'] for poll in result_polls])))
+    team_filter_options = ["All Teams"] + teams_with_results
+    selected_team = st.selectbox("Filter by Team:", team_filter_options, key="results_team_filter")
+    
+    if not result_polls:
         st.info("No results to show yet. Cast a vote to see live results here.")
         conn.close()
         return
 
-    teams_with_results = sorted(list(set([poll['team'] for poll in all_results])))
-    team_filter_options = ["All Teams"] + teams_with_results
-    selected_team = st.selectbox("Filter by Team:", team_filter_options)
-
     # Dynamically populate project filter based on selected team
     if selected_team == "All Teams":
-        projects_with_results = sorted(list(set([poll['project_name'] for poll in all_results])))
+        projects_with_results = sorted(list(set([poll['project_name'] for poll in result_polls])))
     else:
-        projects_with_results = sorted(list(set([poll['project_name'] for poll in all_results if poll['team'] == selected_team])))
+        projects_with_results = sorted(list(set([poll['project_name'] for poll in result_polls if poll['team'] == selected_team])))
     
     project_filter_options = ["All Projects"] + projects_with_results
-    selected_project = st.selectbox("Filter by Project:", project_filter_options)
+    selected_project = st.selectbox("Filter by Project:", project_filter_options, key="results_project_filter")
 
     # Filter and display polls
-    for poll in all_results:
+    for poll in result_polls:
         team_match = (selected_team == "All Teams" or poll['team'] == selected_team)
         project_match = (selected_project == "All Projects" or poll['project_name'] == selected_project)
 
