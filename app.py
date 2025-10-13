@@ -331,7 +331,6 @@ def team_voting_page():
                         thumbnails = content.get('thumbnails', {})
                         thumb_selections = {}
                         if thumbnails:
-                            # Robustly create a grid for any number of thumbnails
                             num_thumbnails = len(thumbnails)
                             num_cols = 5
                             thumbnail_items = list(thumbnails.items())
