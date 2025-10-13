@@ -217,7 +217,7 @@ def render_poll_content(content_json):
                 if theme['assets']: display_image(theme['assets'], width=150)
     if 'thumbnails' in content:
         st.subheader("Thumbnails"); display_image(list(content['thumbnails'].values()), width=200, caption=list(content['thumbnails'].keys()))
-    if 'assets' in content and content['assets']: display_image(content['assets'], width=400) # Standardized width
+    if 'assets' in content and content['assets']: display_image(content['assets'], width=400)
     if 'copy' in content and content['copy']: st.info(content['copy'])
     if 'additional_attachments' in content and content['additional_attachments']:
         st.markdown("---"); st.subheader("Additional Attachments")
@@ -373,9 +373,7 @@ def results_page():
                 else:
                     df = pd.DataFrame([dict(row) for row in votes])
                     
-                    # --- NEW FEATURE: Display Total Votes ---
                     total_votes = len(df)
-                    
                     avg_rating_col, total_votes_col = st.columns(2)
 
                     if 'rating' in df.columns and pd.to_numeric(df['rating'], errors='coerce').notna().any():
@@ -388,7 +386,9 @@ def results_page():
                         team_votes_df = df[df['vote_decision'].isin(['Approved', 'Rejected'])]
                         if not team_votes_df.empty:
                             vote_counts = team_votes_df['vote_decision'].value_counts()
-                            st.bar_chart(vote_counts)
+                            color_map = {'Approved': '#28a745', 'Rejected': '#dc3545'}
+                            colors = [color_map.get(x, '#888888') for x in vote_counts.index]
+                            st.bar_chart(vote_counts, color=colors)
                     
                     if 'comment' in df.columns:
                         st.caption("Comments:")
