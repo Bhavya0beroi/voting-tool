@@ -32,7 +32,6 @@ TEAM_CHANNELS = {
     "Social Team": st.secrets.get("SOCIAL_SLACK_CHANNEL_ID", ""),
     "Company-Wide": st.secrets.get("COMPANY_WIDE_SLACK_CHANNEL_ID", "")
 }
-MANAGER_NAMES = st.secrets.get("MANAGER_NAMES", [])
 MANAGER_PASSWORD = st.secrets.get("MANAGER_PASSWORD", "Learnapp.123")
 
 
@@ -217,8 +216,12 @@ def render_poll_content(content_json):
         except Exception as e: st.error(f"An error occurred: {e}")
 
     if 'script_content' in content and content['script_content']: st.info(content['script_content'])
-    if 'explanation_attachment' in content and content['explanation_attachment']: st.video(content['explanation_attachment'])
-    if 'video' in content and content['video']: st.video(content['video'])
+    if 'explanation_attachment' in content and content['explanation_attachment']: 
+        col1, col2 = st.columns([2, 1])
+        with col1: st.video(content['explanation_attachment'])
+    if 'video' in content and content['video']: 
+        col1, col2 = st.columns([2, 1])
+        with col1: st.video(content['video'])
     if 'themes' in content:
         for theme in content['themes']:
             with st.container(border=True):
