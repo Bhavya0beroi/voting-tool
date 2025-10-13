@@ -138,18 +138,25 @@ def create_vote_page():
         vote_type = "Internal Shortlisting"
         button_label = "Start Internal Shortlisting"
         st.subheader("Submit Titles & Thumbnails for Internal Voting")
-        if 'title_count' not in st.session_state: st.session_state.title_count = 20
-        if 'thumb_count' not in st.session_state: st.session_state.thumb_count = 10
+        
+        if 'reindex_thumb_count' not in st.session_state: st.session_state.reindex_thumb_count = 2
+        if 'reindex_title_count' not in st.session_state: st.session_state.reindex_title_count = 2
+        
         content['thumbnails'] = {}; content['titles'] = {}
-        st.write("Upload up to 10 thumbnail ideas:")
-        for i in range(st.session_state.thumb_count):
+        
+        st.markdown("---")
+        st.write("**Thumbnail Ideas**")
+        for i in range(st.session_state.reindex_thumb_count):
             uploaded_file = st.file_uploader(f"Thumbnail Idea {i+1}", key=f"thumb_{i}", type=['png', 'jpg', 'jpeg'])
             if uploaded_file: content['thumbnails'][f"Thumbnail {i+1}"] = save_uploaded_file(uploaded_file)
+        if st.button("➕ Add Another Thumbnail"): st.session_state.reindex_thumb_count += 1; st.rerun()
         
-        st.write("Enter up to 20 title ideas:")
-        for i in range(st.session_state.title_count):
+        st.markdown("---")
+        st.write("**Title Ideas**")
+        for i in range(st.session_state.reindex_title_count):
             title_text = st.text_input(f"Title Idea {i+1}", key=f"title_{i}")
             if title_text: content['titles'][f"Title {i+1}"] = title_text
+        if st.button("➕ Add Another Title"): st.session_state.reindex_title_count += 1; st.rerun()
 
     elif team == "Social Team":
         vote_type = "Final Post Approval"
@@ -190,6 +197,10 @@ def create_vote_page():
         conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (poll_id, project_id, team, submitter_name, vote_type, status, datetime.now().isoformat(), json.dumps(content)))
         conn.commit(); conn.close()
         st.session_state.attachment_count = 0
+        if 'reindex_thumb_count' in st.session_state: st.session_state.reindex_thumb_count = 2
+        if 'reindex_title_count' in st.session_state: st.session_state.reindex_title_count = 2
+        if 'theme_count' in st.session_state: st.session_state.theme_count = 1
+        
         st.balloons(); st.success("Submission successful!")
         send_slack_notification(team, f"🗳️ New submission from {submitter_name} for project '{project_name}' is ready for review.")
 
