@@ -101,7 +101,6 @@ def create_vote_page():
     st.header("📮 Create New Vote", divider='blue')
     
     project_name = st.text_input("New Project Name")
-    
     submitter_name = st.text_input("Your Name")
     team = st.selectbox("Select Your Team", ["Writer", "Graphic Team", "Editor", "Reindex Team", "Social Team"])
     
@@ -125,7 +124,7 @@ def create_vote_page():
             theme_notes = st.text_area(f"Design Notes for Theme {i+1}", key=f"notes_{i}")
             uploaded_files = st.file_uploader(f"Upload Assets for Theme {i+1}", accept_multiple_files=True, key=f"files_{i}", type=['png', 'jpg', 'jpeg'])
             assets = [save_uploaded_file(f) for f in uploaded_files] if uploaded_files else []
-            if assets or theme_notes: content['themes'].append({'notes': theme_notes, 'assets': assets})
+            if assets or theme_notes: content['themes'].append({'notes': theme_notes, 'assets': assets, 'name': f"Theme {i+1}"})
         
         if st.button("➕ Add Another Theme"): st.session_state.theme_count += 1; st.rerun()
 
@@ -137,6 +136,7 @@ def create_vote_page():
 
     elif team == "Reindex Team":
         vote_type = "Internal Shortlisting"
+        button_label = "Start Internal Shortlisting"
         st.subheader("Submit Titles & Thumbnails for Internal Voting")
         if 'title_count' not in st.session_state: st.session_state.title_count = 20
         if 'thumb_count' not in st.session_state: st.session_state.thumb_count = 10
@@ -150,7 +150,6 @@ def create_vote_page():
         for i in range(st.session_state.title_count):
             title_text = st.text_input(f"Title Idea {i+1}", key=f"title_{i}")
             if title_text: content['titles'][f"Title {i+1}"] = title_text
-        button_label = "Start Internal Shortlisting"
 
     elif team == "Social Team":
         vote_type = "Final Post Approval"
@@ -182,12 +181,9 @@ def create_vote_page():
             conn.commit()
         except sqlite3.IntegrityError:
             st.error(f"A project named '{project_name}' already exists. Please choose a unique name.")
-            conn.close()
-            return
+            conn.close(); return
         except Exception as e:
-            st.error(f"A database error occurred: {e}")
-            conn.close()
-            return
+            st.error(f"A database error occurred: {e}"); conn.close(); return
 
         poll_id = str(uuid.uuid4())
         status = 'awaiting_manager_approval' if "Manager Approval" in vote_type else 'active_team_poll'
@@ -203,19 +199,17 @@ def render_poll_content(content_json):
     content = json.loads(content_json)
     
     def display_image(image_path_or_list, width=None, caption=None):
-        try:
-            st.image(image_path_or_list, width=width, caption=caption)
-        except (UnidentifiedImageError, FileNotFoundError):
-            st.error("🖼️ Error: Could not display one or more image files. They may be corrupt or missing.")
-        except Exception as e: st.error(f"An error occurred while displaying an image: {e}")
+        try: st.image(image_path_or_list, width=width, caption=caption)
+        except (UnidentifiedImageError, FileNotFoundError): st.error("🖼️ Error: Could not display one or more image files.")
+        except Exception as e: st.error(f"An error occurred: {e}")
 
     if 'script_content' in content and content['script_content']: st.info(content['script_content'])
     if 'explanation_attachment' in content and content['explanation_attachment']: st.video(content['explanation_attachment'])
     if 'video' in content and content['video']: st.video(content['video'])
     if 'themes' in content:
-        for i, theme in enumerate(content['themes']):
+        for theme in content['themes']:
             with st.container(border=True):
-                st.subheader(f"Theme {i+1}")
+                st.subheader(theme.get('name', 'Theme'))
                 if theme['notes']: st.caption(theme['notes'])
                 if theme['assets']: display_image(theme['assets'], width=150)
     if 'thumbnails' in content:
@@ -245,12 +239,10 @@ def manager_approval_page():
     for poll in manager_polls:
         with st.expander(f"**{poll['project_name']}** | `{poll['vote_type']}`", expanded=True):
             render_poll_content(poll['content_json'])
-            
             with st.form(key=f"manager_vote_form_{poll['id']}"):
                 comment = st.text_area("Comments (Required for Rejection)")
                 approve_button = st.form_submit_button("✅ Approve & Promote")
                 reject_button = st.form_submit_button("❌ Reject")
-
                 if approve_button:
                     conn.execute("UPDATE polls SET status = 'completed_manager_approved' WHERE id = ?", (poll['id'],))
                     new_poll_id = str(uuid.uuid4())
@@ -258,7 +250,6 @@ def manager_approval_page():
                     conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json, parent_poll_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (new_poll_id, poll['project_id'], poll['team'], poll['submitter_name'], team_vote_type, 'active_team_poll', datetime.now().isoformat(), poll['content_json'], poll['id']))
                     conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Approved', comment))
                     conn.commit(); st.success("Approved and promoted!"); st.rerun()
-
                 if reject_button:
                     if not comment: st.error("A comment is required to reject.")
                     else:
@@ -270,80 +261,64 @@ def manager_approval_page():
 def team_voting_page():
     st.header("👥 Team Voting", divider='green')
     voter_name = st.text_input("Enter Your Name to Vote", key="team_voter_name")
-    if not voter_name: 
-        st.warning("Please enter your name to see and vote on polls.")
-        return
+    if not voter_name: st.warning("Please enter your name to see and vote on polls."); return
     
     conn = get_db_connection()
     all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
     
-    polls_to_vote_on = []
-    polls_voted_on = []
-
-    for poll in all_active_polls:
-        existing_vote = conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (poll['id'], voter_name)).fetchone()
-        if existing_vote:
-            polls_voted_on.append(poll)
-        else:
-            polls_to_vote_on.append(poll)
+    polls_to_vote_on = [p for p in all_active_polls if not conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (p['id'], voter_name)).fetchone()]
+    polls_voted_on = [p for p in all_active_polls if conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (p['id'], voter_name)).fetchone()]
 
     st.subheader("Action Required: Your Polls to Vote On", divider='blue')
-
     if not polls_to_vote_on:
-        st.success("✅ You are all caught up! No polls are waiting for your vote.")
+        st.success("✅ You are all caught up!")
     else:
         poll_options = {f"{p['project_name']} - {p['vote_type']} (by {p['submitter_name']})": p for p in polls_to_vote_on}
         selected_poll_title = st.selectbox("Select a Poll to Vote On:", options=["-- Please select --"] + list(poll_options.keys()))
 
         if selected_poll_title != "-- Please select --":
             selected_poll = poll_options[selected_poll_title]
+            content = json.loads(selected_poll['content_json'])
             
             with st.container(border=True):
                 st.markdown(f"### Voting on: {selected_poll_title}")
                 render_poll_content(selected_poll['content_json'])
                 st.markdown("---")
                 
-                # --- ENHANCED: Special UI for Reindex Team Shortlisting ---
-                if selected_poll['vote_type'] == "Internal Shortlisting":
-                    with st.form(key=f"reindex_shortlist_form_{selected_poll['id']}"):
-                        st.write("**Thumbnails to Keep:**")
-                        content = json.loads(selected_poll['content_json'])
-                        kept_thumbnails = st.multiselect("Select Thumbnails", options=list(content.get('thumbnails', {}).keys()))
+                is_multi_select = (selected_poll['vote_type'] == "Internal Shortlisting") or ('themes' in content and len(content['themes']) > 1)
+                
+                if is_multi_select:
+                    with st.form(key=f"multi_select_form_{selected_poll['id']}"):
+                        st.write("**Select all the options you approve of:**")
+                        options = []
+                        if 'themes' in content: options.extend([t['name'] for t in content['themes']])
+                        if 'thumbnails' in content: options.extend(list(content.get('thumbnails', {}).keys()))
+                        if 'titles' in content: options.extend(list(content.get('titles', {}).keys()))
                         
-                        st.write("**Titles to Keep:**")
-                        kept_titles = st.multiselect("Select Titles", options=list(content.get('titles', {}).keys()))
-
-                        submitted = st.form_submit_button("Submit Your Selections")
+                        selections = st.multiselect("Your Selections:", options)
+                        submitted = st.form_submit_button("Submit Selections")
                         if submitted:
-                            for thumb in kept_thumbnails:
-                                conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Keep', thumb))
-                            for title in kept_titles:
-                                 conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Keep', title))
+                            for item in selections:
+                                conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Selected', item))
                             conn.commit()
-                            st.success("Your shortlist selections have been saved!"); st.rerun()
-                else: # Standard voting form
+                            st.success("Your selections have been saved!"); st.rerun()
+                else:
                     with st.form(key=f"team_vote_form_{selected_poll['id']}"):
                         decision = st.radio("Your Decision:", ["👍 Approve", "👎 Reject"], horizontal=True)
                         rating = st.slider("Rating", 1, 10, 5)
                         comment = st.text_area("Comments (Optional)")
-                        
                         submitted = st.form_submit_button("Submit Vote")
                         if submitted:
                             vote_decision = "Approved" if decision == "👍 Approve" else "Rejected"
                             conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)", (selected_poll['id'], voter_name, vote_decision, comment, rating))
-                            conn.commit()
-                            st.success(f"Your '{vote_decision}' vote is recorded!"); st.balloons()
+                            conn.commit(); st.success(f"Your '{vote_decision}' vote is recorded!"); st.balloons()
     
-    st.markdown("---")
     with st.expander("Polls You've Already Voted On"):
-        if not polls_voted_on:
-            st.info("You haven't voted on any active polls yet.")
+        if not polls_voted_on: st.info("You haven't voted on any active polls yet.")
         else:
             for poll in polls_voted_on:
                 my_vote = conn.execute("SELECT * FROM votes WHERE poll_id = ? AND voter_name = ?", (poll['id'], voter_name)).fetchone()
-                if my_vote:
-                    st.markdown(f"**{poll['project_name']}** | `{poll['vote_type']}` - You voted: **{my_vote['vote_decision']}**")
-
+                if my_vote: st.markdown(f"**{poll['project_name']}** | `{poll['vote_type']}` - You voted: **{my_vote['vote_decision']}**")
     conn.close()
 
 
@@ -354,9 +329,7 @@ def results_page():
     result_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
     
     if not result_polls:
-        st.info("No results to show yet. Cast a vote to see live results here.")
-        conn.close()
-        return
+        st.info("No results to show yet. Cast a vote to see live results here."); conn.close(); return
 
     teams_with_results = sorted(list(set([poll['team'] for poll in result_polls])))
     team_filter_options = ["All Teams"] + teams_with_results
@@ -378,54 +351,43 @@ def results_page():
             with st.container(border=True):
                 st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
                 
-                if poll['status'] == 'active_team_poll':
-                    st.info("Status: Voting in Progress")
-                else:
-                    st.success(f"Status: {poll['status'].replace('_', ' ').title()}")
+                if poll['status'] == 'active_team_poll': st.info("Status: Voting in Progress")
+                else: st.success(f"Status: {poll['status'].replace('_', ' ').title()}")
                 
-                st.markdown("---")
-                st.subheader("📊 Vote Summary")
+                st.markdown("---"); st.subheader("📊 Vote Summary")
                 
                 votes = conn.execute("SELECT * FROM votes WHERE poll_id = ?", (poll['id'],)).fetchall()
                 
-                if not votes:
-                    st.info("No votes have been cast for this poll yet.")
+                if not votes: st.info("No votes have been cast for this poll yet.")
                 else:
                     df = pd.DataFrame([dict(row) for row in votes])
                     
                     if poll['vote_type'] == "Internal Shortlisting":
                         st.write("Tally of 'Keep' votes:")
-                        keep_counts = df['item_id'].value_counts().reset_index()
-                        keep_counts.columns = ['Item', 'Keep Votes']
+                        keep_counts = df['item_id'].value_counts().reset_index(); keep_counts.columns = ['Item', 'Keep Votes']
                         st.dataframe(keep_counts)
                     else:
                         total_votes = len(df)
                         avg_rating_col, total_votes_col = st.columns(2)
-
                         if 'rating' in df.columns and pd.to_numeric(df['rating'], errors='coerce').notna().any():
                             avg_rating = pd.to_numeric(df['rating'], errors='coerce').mean()
                             avg_rating_col.metric("Average Team Rating", f"{avg_rating:.1f} / 10")
-
                         total_votes_col.metric("Total Votes", total_votes)
-
                         if 'vote_decision' in df.columns:
                             team_votes_df = df[df['vote_decision'].isin(['Approved', 'Rejected'])]
                             if not team_votes_df.empty:
                                 vote_counts = team_votes_df['vote_decision'].value_counts()
-                                approve_count = vote_counts.get('Approved', 0)
-                                reject_count = vote_counts.get('Rejected', 0)
+                                approve_count = vote_counts.get('Approved', 0); reject_count = vote_counts.get('Rejected', 0)
                                 approve_col, reject_col = st.columns(2)
                                 approve_col.markdown(f"### ✅ Approved: {approve_count}")
                                 reject_col.markdown(f"### ❌ Rejected: {reject_count}")
-                        
                         if 'comment' in df.columns:
                             st.caption("Comments:")
                             comments_df = df[df['comment'].notna() & (df['comment'] != '')]
                             if not comments_df.empty:
                                 for index, vote in comments_df.iterrows():
                                     st.write(f"- **{vote['voter_name']}:** *'{vote['comment']}'*")
-                            else:
-                                st.write("No comments were left.")
+                            else: st.write("No comments were left.")
 
                 if poll['status'] == 'active_team_poll' and poll['vote_type'] == "Internal Shortlisting":
                      if st.button("🚀 Promote Shortlist to Final Vote", key=f"promote_{poll['id']}"):
