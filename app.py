@@ -241,39 +241,50 @@ def render_poll_content(content_json):
 
 def manager_approval_page():
     st.header("👨‍💼 Manager Approvals", divider='red')
-    voter_name = st.text_input("Enter Your Name to Approve/Reject", key="manager_name_input")
-    if not voter_name: st.warning("Please enter your name."); return
-    if voter_name not in MANAGER_NAMES: st.error("You do not have permission to view this page."); return
+    voter_name = st.text_input("Enter Your Name to View/Approve", key="manager_name_input")
+    if not voter_name: 
+        st.warning("Please enter your name to view this page.")
+        return
     
     conn = get_db_connection()
     manager_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'awaiting_manager_approval'").fetchall()
     
+    if not manager_polls:
+        st.success("✅ No items are currently waiting for manager approval.")
+    
     for poll in manager_polls:
         with st.expander(f"**{poll['project_name']}** | `{poll['vote_type']}`", expanded=True):
             render_poll_content(poll['content_json'])
-            with st.form(key=f"manager_vote_form_{poll['id']}"):
-                comment = st.text_area("Comments (Required for Rejection)")
-                approve_button = st.form_submit_button("✅ Approve & Promote")
-                reject_button = st.form_submit_button("❌ Reject")
-                if approve_button:
-                    conn.execute("UPDATE polls SET status = 'completed_manager_approved' WHERE id = ?", (poll['id'],))
-                    new_poll_id = str(uuid.uuid4())
-                    team_vote_type = poll['vote_type'].replace(" Manager Approval", " Team Approval")
-                    conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json, parent_poll_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (new_poll_id, poll['project_id'], poll['team'], poll['submitter_name'], team_vote_type, 'active_team_poll', datetime.now().isoformat(), poll['content_json'], poll['id']))
-                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Approved', comment))
-                    conn.commit(); st.success("Approved and promoted!"); st.rerun()
-                if reject_button:
-                    if not comment: st.error("A comment is required to reject.")
-                    else:
-                        conn.execute("UPDATE polls SET status = 'completed_manager_rejected' WHERE id = ?", (poll['id'],))
-                        conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Rejected', comment))
-                        conn.commit(); st.error("Submission has been rejected."); st.rerun()
+            
+            # --- CHANGE HERE: Conditional UI for managers vs. viewers ---
+            if voter_name in MANAGER_NAMES:
+                with st.form(key=f"manager_vote_form_{poll['id']}"):
+                    comment = st.text_area("Comments (Required for Rejection)")
+                    approve_button = st.form_submit_button("✅ Approve & Promote")
+                    reject_button = st.form_submit_button("❌ Reject")
+                    if approve_button:
+                        conn.execute("UPDATE polls SET status = 'completed_manager_approved' WHERE id = ?", (poll['id'],))
+                        new_poll_id = str(uuid.uuid4())
+                        team_vote_type = poll['vote_type'].replace(" Manager Approval", " Team Approval")
+                        conn.execute("INSERT INTO polls (id, project_id, team, submitter_name, vote_type, status, created_at, content_json, parent_poll_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (new_poll_id, poll['project_id'], poll['team'], poll['submitter_name'], team_vote_type, 'active_team_poll', datetime.now().isoformat(), poll['content_json'], poll['id']))
+                        conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Approved', comment))
+                        conn.commit(); st.success("Approved and promoted!"); st.rerun()
+                    if reject_button:
+                        if not comment: st.error("A comment is required to reject.")
+                        else:
+                            conn.execute("UPDATE polls SET status = 'completed_manager_rejected' WHERE id = ?", (poll['id'],))
+                            conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment) VALUES (?, ?, ?, ?)", (poll['id'], voter_name, 'Manager Rejected', comment))
+                            conn.commit(); st.error("Submission has been rejected."); st.rerun()
+            else:
+                st.info("This poll is awaiting approval from a manager. (View-only for non-managers)")
     conn.close()
 
 def team_voting_page():
     st.header("👥 Team Voting", divider='green')
     voter_name = st.text_input("Enter Your Name to Vote", key="team_voter_name")
-    if not voter_name: st.warning("Please enter your name to see and vote on polls."); return
+    if not voter_name: 
+        st.warning("Please enter your name to see and vote on polls.")
+        return
     
     conn = get_db_connection()
     all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
@@ -305,10 +316,8 @@ def team_voting_page():
                             col_idx = 0
                             for thumb_name, thumb_path in thumbnails.items():
                                 with cols[col_idx]:
-                                    try:
-                                        st.image(thumb_path, use_container_width=True)
-                                        thumb_selections[thumb_name] = st.checkbox(f"Keep {thumb_name}", key=f"thumb_cb_{selected_poll['id']}_{thumb_name}")
-                                    except Exception: st.error(f"Cannot display {thumb_name}")
+                                    st.image(thumb_path, use_container_width=True)
+                                    thumb_selections[thumb_name] = st.checkbox(f"Keep {thumb_name}", key=f"thumb_cb_{selected_poll['id']}_{thumb_name}")
                                 col_idx = (col_idx + 1) % 5
                         
                         st.markdown("---")
