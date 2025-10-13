@@ -338,19 +338,34 @@ def results_page():
     st.header("🏆 Results & History", divider='orange')
     conn = get_db_connection()
     
-    result_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
-    
-    teams_with_results = list(set([poll['team'] for poll in result_polls]))
-    filter_options = ["All Teams"] + teams_with_results
-    selected_team = st.selectbox("Filter by Team:", filter_options, key="results_team_filter")
+    # --- ENHANCED FILTERING ---
+    all_results_query = "SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)"
+    all_results = conn.execute(all_results_query).fetchall()
 
-    if not result_polls:
+    if not all_results:
         st.info("No results to show yet. Cast a vote to see live results here.")
         conn.close()
         return
 
-    for poll in result_polls:
-        if selected_team == "All Teams" or poll['team'] == selected_team:
+    teams_with_results = sorted(list(set([poll['team'] for poll in all_results])))
+    team_filter_options = ["All Teams"] + teams_with_results
+    selected_team = st.selectbox("Filter by Team:", team_filter_options)
+
+    # Dynamically populate project filter based on selected team
+    if selected_team == "All Teams":
+        projects_with_results = sorted(list(set([poll['project_name'] for poll in all_results])))
+    else:
+        projects_with_results = sorted(list(set([poll['project_name'] for poll in all_results if poll['team'] == selected_team])))
+    
+    project_filter_options = ["All Projects"] + projects_with_results
+    selected_project = st.selectbox("Filter by Project:", project_filter_options)
+
+    # Filter and display polls
+    for poll in all_results:
+        team_match = (selected_team == "All Teams" or poll['team'] == selected_team)
+        project_match = (selected_project == "All Projects" or poll['project_name'] == selected_project)
+
+        if team_match and project_match:
             with st.container(border=True):
                 st.subheader(f"{poll['project_name']} - `{poll['vote_type']}`")
                 
@@ -359,7 +374,8 @@ def results_page():
                 else:
                     st.success(f"Status: {poll['status'].replace('_', ' ').title()}")
                 
-                st.markdown("---"); st.subheader("📊 Vote Summary")
+                st.markdown("---")
+                st.subheader("📊 Vote Summary")
                 
                 votes = conn.execute("SELECT * FROM votes WHERE poll_id = ?", (poll['id'],)).fetchall()
                 
@@ -390,8 +406,7 @@ def results_page():
                 if poll['status'] == 'active_team_poll':
                     if st.button("🔒 Finalize and Close Poll", key=f"close_from_results_{poll['id']}"):
                         conn.execute("UPDATE polls SET status = 'completed_team_vote' WHERE id = ?", (poll['id'],))
-                        conn.commit()
-                        st.rerun()
+                        conn.commit(); st.rerun()
 
                 if st.button("🔄 Start Revision", key=f"revise_{poll['id']}"):
                     st.session_state['revision_data'] = {
