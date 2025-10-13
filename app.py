@@ -331,13 +331,17 @@ def team_voting_page():
                         thumbnails = content.get('thumbnails', {})
                         thumb_selections = {}
                         if thumbnails:
-                            cols = st.columns(5)
-                            col_idx = 0
-                            for thumb_name, thumb_path in thumbnails.items():
-                                with cols[col_idx]:
-                                    st.image(thumb_path, use_container_width=True)
-                                    thumb_selections[thumb_name] = st.checkbox(f"Keep {thumb_name}", key=f"thumb_cb_{selected_poll['id']}_{thumb_name}")
-                                col_idx = (col_idx + 1) % 5
+                            # Robustly create a grid for any number of thumbnails
+                            num_thumbnails = len(thumbnails)
+                            num_cols = 5
+                            thumbnail_items = list(thumbnails.items())
+                            for i in range(0, num_thumbnails, num_cols):
+                                cols = st.columns(num_cols)
+                                row_items = thumbnail_items[i:i + num_cols]
+                                for j, (thumb_name, thumb_path) in enumerate(row_items):
+                                    with cols[j]:
+                                        st.image(thumb_path, use_container_width=True)
+                                        thumb_selections[thumb_name] = st.checkbox(f"Keep {thumb_name}", key=f"thumb_cb_{selected_poll['id']}_{thumb_name}")
                         
                         st.markdown("---")
                         st.subheader("Titles")
