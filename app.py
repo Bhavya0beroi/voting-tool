@@ -323,7 +323,7 @@ def team_voting_page():
             with st.container(border=True):
                 st.markdown(f"### Voting on: {selected_poll_title}")
                 
-                is_multi_select = (selected_poll['vote_type'] == "Internal Shortlisting") or ('themes' in content and len(content['themes']) > 1)
+                is_multi_select = (selected_poll['vote_type'] == "Internal Shortlisting") or ('themes' in content and len(content.get('themes', [])) > 1)
                 
                 if is_multi_select:
                     with st.form(key=f"multi_select_form_{selected_poll['id']}"):
