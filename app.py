@@ -306,7 +306,6 @@ def team_voting_page():
                             for thumb_name, thumb_path in thumbnails.items():
                                 with cols[col_idx]:
                                     try:
-                                        # --- FIX HERE: Changed use_column_width to use_container_width ---
                                         st.image(thumb_path, use_container_width=True)
                                         thumb_selections[thumb_name] = st.checkbox(f"Keep {thumb_name}", key=f"thumb_cb_{selected_poll['id']}_{thumb_name}")
                                     except Exception: st.error(f"Cannot display {thumb_name}")
