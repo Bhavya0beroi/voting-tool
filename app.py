@@ -217,9 +217,7 @@ def render_poll_content(content_json):
                 if theme['assets']: display_image(theme['assets'], width=150)
     if 'thumbnails' in content:
         st.subheader("Thumbnails"); display_image(list(content['thumbnails'].values()), width=200, caption=list(content['thumbnails'].keys()))
-    if 'titles' in content:
-        st.subheader("Titles"); st.table(pd.DataFrame(content['titles'].values(), index=content['titles'].keys(), columns=["Title"]))
-    if 'assets' in content and content['assets']: display_image(content['assets'])
+    if 'assets' in content and content['assets']: display_image(content['assets'], width=400) # Standardized width
     if 'copy' in content and content['copy']: st.info(content['copy'])
     if 'additional_attachments' in content and content['additional_attachments']:
         st.markdown("---"); st.subheader("Additional Attachments")
@@ -373,13 +371,18 @@ def results_page():
                 if not votes:
                     st.info("No votes have been cast for this poll yet.")
                 else:
-                    # --- FIX: Convert list of Row objects to list of dicts ---
-                    votes_list = [dict(row) for row in votes]
-                    df = pd.DataFrame(votes_list)
+                    df = pd.DataFrame([dict(row) for row in votes])
                     
+                    # --- NEW FEATURE: Display Total Votes ---
+                    total_votes = len(df)
+                    
+                    avg_rating_col, total_votes_col = st.columns(2)
+
                     if 'rating' in df.columns and pd.to_numeric(df['rating'], errors='coerce').notna().any():
                         avg_rating = pd.to_numeric(df['rating'], errors='coerce').mean()
-                        st.metric("Average Team Rating", f"{avg_rating:.1f} / 10")
+                        avg_rating_col.metric("Average Team Rating", f"{avg_rating:.1f} / 10")
+
+                    total_votes_col.metric("Total Votes", total_votes)
 
                     if 'vote_decision' in df.columns:
                         team_votes_df = df[df['vote_decision'].isin(['Approved', 'Rejected'])]
