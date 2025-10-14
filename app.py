@@ -64,9 +64,16 @@ def send_slack_notification(team, message):
         st.warning(f"Slack webhook not configured. Notification not sent.")
         return
     
-    # DEBUG: Webhook URL check (Testing ke liye - baad mein hata dena)
-    if SLACK_WEBHOOK_URL.startswith("YAHAN_APNA"):
+    # Check if placeholder URL
+    if SLACK_WEBHOOK_URL.startswith("YAHAN_APNA") or SLACK_WEBHOOK_URL == "YOUR_WEBHOOK_URL":
         st.error("⚠️ Please update the webhook URL in secrets.toml file!")
+        st.info("👉 Go to https://api.slack.com/apps to create a new webhook")
+        return
+    
+    # Check if URL format is correct
+    if not SLACK_WEBHOOK_URL.startswith("https://hooks.slack.com/services/"):
+        st.error("⚠️ Invalid webhook URL format!")
+        st.info("URL should start with: https://hooks.slack.com/services/")
         return
     
     try:
@@ -78,15 +85,24 @@ def send_slack_notification(team, message):
         response = requests.post(
             SLACK_WEBHOOK_URL,
             json=payload,
-            headers={'Content-Type': 'application/json'}
+            headers={'Content-Type': 'application/json'},
+            timeout=10  # 10 second timeout
         )
         
         if response.status_code == 200:
             st.success("🚀 Voting notification sent to Slack!")
+        elif response.status_code == 404:
+            st.error("❌ Webhook URL is invalid or expired!")
+            st.info("Please create a new webhook at: https://api.slack.com/apps")
+            st.caption(f"Error details: {response.text}")
         else:
             st.error(f"Slack notification failed. Status code: {response.status_code}")
-            st.error(f"Response: {response.text}")  # Ye batayega exact error kya hai
+            st.caption(f"Response: {response.text}")
             
+    except requests.exceptions.Timeout:
+        st.error("⏰ Request timeout! Slack took too long to respond.")
+    except requests.exceptions.ConnectionError:
+        st.error("🌐 Connection error! Check your internet connection.")
     except Exception as e:
         st.error(f"Error sending Slack notification: {str(e)}")
 
