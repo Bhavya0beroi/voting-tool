@@ -8,17 +8,19 @@ import json
 from PIL import UnidentifiedImageError
 
 # ==========================================
-# 🔐 CONFIGURATION - EDIT THESE VALUES ONLY
+# 🔐 CONFIGURATION - FROM SECRETS
 # ==========================================
 
-# Slack Bot Token (starts with xoxb-)
-SLACK_BOT_TOKEN = "xoxb-1778615088705-9691584018598-wIW2cLOy9nyTOwE53ZkDnppS"  # ⬅️ REPLACE THIS
-
-# Slack Channel ID where notifications will be sent
-SLACK_CHANNEL_ID = "C09L65S88C9"  # ⬅️ REPLACE THIS (e.g., C09L65S88C9)
-
-# Manager Password
-MANAGER_PASSWORD = "Learnapp.123"
+# Load from secrets.toml (Streamlit Cloud) or environment variables
+try:
+    SLACK_BOT_TOKEN = st.secrets.get("SLACK_BOT_TOKEN", "")
+    SLACK_CHANNEL_ID = st.secrets.get("SLACK_CHANNEL_ID", "")
+    MANAGER_PASSWORD = st.secrets.get("MANAGER_PASSWORD", "Learnapp.123")
+except:
+    # Fallback to empty if secrets not available
+    SLACK_BOT_TOKEN = ""
+    SLACK_CHANNEL_ID = ""
+    MANAGER_PASSWORD = "Learnapp.123"
 
 # Enable/Disable Slack Notifications
 ENABLE_SLACK = True  # Set to False to disable Slack temporarily
@@ -74,8 +76,8 @@ def send_slack_notification(team, message):
         return
     
     # Check if credentials are configured
-    if SLACK_BOT_TOKEN == "xoxb-1778615088705-9691584018598-wIW2cLOy9nyTOwE53ZkDnppS" or SLACK_CHANNEL_ID == "C09L65S88C9":
-        st.warning("⚠️ Slack credentials not configured. Please update SLACK_BOT_TOKEN and SLACK_CHANNEL_ID in the code.")
+    if not SLACK_BOT_TOKEN or not SLACK_CHANNEL_ID:
+        st.warning("⚠️ Slack credentials not configured in secrets.toml")
         st.info(f"📋 Notification message: {message}")
         return
     
@@ -109,9 +111,9 @@ def send_slack_notification(team, message):
         
         # Helpful error messages
         if error_msg == "not_authed" or error_msg == "invalid_auth":
-            st.info("🔑 Your Bot Token is invalid or expired. Please check SLACK_BOT_TOKEN.")
+            st.info("🔑 Your Bot Token is invalid or expired. Please check SLACK_BOT_TOKEN in secrets.")
         elif error_msg == "channel_not_found":
-            st.info("📢 Channel not found. Please verify SLACK_CHANNEL_ID is correct.")
+            st.info("📢 Channel not found. Please verify SLACK_CHANNEL_ID in secrets.")
         elif error_msg == "missing_scope":
             st.info("🔐 Missing permissions. Add these scopes: chat:write, chat:write.public")
         
@@ -524,8 +526,9 @@ def main():
     # Configuration status indicator
     with st.sidebar:
         st.header("⚙️ Configuration")
-        if SLACK_BOT_TOKEN == "xoxb-YOUR-TOKEN-HERE":
+        if not SLACK_BOT_TOKEN or not SLACK_CHANNEL_ID:
             st.error("🔴 Slack Not Configured")
+            st.caption("Add credentials in secrets.toml")
         else:
             st.success("🟢 Slack Configured")
         
