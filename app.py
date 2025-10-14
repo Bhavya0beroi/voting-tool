@@ -12,10 +12,10 @@ from PIL import UnidentifiedImageError
 # ==========================================
 
 # Slack Bot Token (starts with xoxb-)
-SLACK_BOT_TOKEN = "xoxb-YOUR-TOKEN-HERE"  # ⬅️ REPLACE THIS
+SLACK_BOT_TOKEN = "xoxb-1778615088705-9691584018598-wIW2cLOy9nyTOwE53ZkDnppS"  # ⬅️ REPLACE THIS
 
 # Slack Channel ID where notifications will be sent
-SLACK_CHANNEL_ID = "C01234ABCDE"  # ⬅️ REPLACE THIS (e.g., C09L65S88C9)
+SLACK_CHANNEL_ID = "C09L65S88C9"  # ⬅️ REPLACE THIS (e.g., C09L65S88C9)
 
 # Manager Password
 MANAGER_PASSWORD = "Learnapp.123"
