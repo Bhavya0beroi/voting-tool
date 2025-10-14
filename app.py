@@ -146,24 +146,28 @@ def create_vote_page():
         button_label = "Start Internal Shortlisting"
         st.subheader("Submit Titles & Thumbnails for Internal Voting")
         
-        if 'reindex_thumb_count' not in st.session_state: st.session_state.reindex_thumb_count = 2
-        if 'reindex_title_count' not in st.session_state: st.session_state.reindex_title_count = 2
-        
-        content['thumbnails'] = {}; content['titles'] = {}
+        content['thumbnails'] = {}
+        content['titles'] = {}
         
         st.markdown("---")
-        st.write("**Thumbnail Ideas**")
-        for i in range(st.session_state.reindex_thumb_count):
-            uploaded_file = st.file_uploader(f"Thumbnail Idea {i+1}", key=f"thumb_{i}", type=['png', 'jpg', 'jpeg'])
-            if uploaded_file: content['thumbnails'][f"Thumbnail {i+1}"] = save_uploaded_file(uploaded_file)
-        if st.button("➕ Add Another Thumbnail"): st.session_state.reindex_thumb_count += 1; st.rerun()
-        
+        # --- ENHANCEMENT: Bulk upload for thumbnails ---
+        uploaded_thumbnails = st.file_uploader(
+            "Upload All Thumbnail Ideas",
+            accept_multiple_files=True,
+            key="reindex_thumbs_bulk",
+            type=['png', 'jpg', 'jpeg']
+        )
+        if uploaded_thumbnails:
+            for i, uploaded_file in enumerate(uploaded_thumbnails):
+                content['thumbnails'][f"Thumbnail {i+1}"] = save_uploaded_file(uploaded_file)
+
         st.markdown("---")
-        st.write("**Title Ideas**")
-        for i in range(st.session_state.reindex_title_count):
-            title_text = st.text_input(f"Title Idea {i+1}", key=f"title_{i}")
-            if title_text: content['titles'][f"Title {i+1}"] = title_text
-        if st.button("➕ Add Another Title"): st.session_state.reindex_title_count += 1; st.rerun()
+        # --- ENHANCEMENT: Bulk text area for titles ---
+        titles_text = st.text_area("Paste All Title Ideas (one title per line)")
+        if titles_text:
+            titles_list = [line.strip() for line in titles_text.split('\n') if line.strip()]
+            for i, title in enumerate(titles_list):
+                content['titles'][f"Title {i+1}"] = title
 
     elif team == "Social Team":
         vote_type = "Final Post Approval"
@@ -206,8 +210,6 @@ def create_vote_page():
         conn.commit(); conn.close()
         
         if 'attachment_count' in st.session_state: st.session_state.attachment_count = 0
-        if 'reindex_thumb_count' in st.session_state: st.session_state.reindex_thumb_count = 2
-        if 'reindex_title_count' in st.session_state: st.session_state.reindex_title_count = 2
         if 'theme_count' in st.session_state: st.session_state.theme_count = 1
         
         st.balloons(); st.success("Submission successful!")
