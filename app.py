@@ -22,7 +22,7 @@ if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
 # --- SECURITY & CONFIGURATION (from secrets.toml) ---
-SLACK_WEBHOOK_URL = st.secrets.get("SLACK_WEBHOOK_URL", "")
+SLACK_WEBHOOK_URL = st.secrets.get("SLACK_BOT_TOKEN", "")  # Using old variable name for compatibility
 TEAM_CHANNELS = {
     "Writer": st.secrets.get("WRITER_SLACK_CHANNEL_ID", ""),
     "Graphic Team": st.secrets.get("GRAPHIC_SLACK_CHANNEL_ID", ""),
