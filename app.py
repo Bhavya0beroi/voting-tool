@@ -150,7 +150,6 @@ def create_vote_page():
         content['titles'] = {}
         
         st.markdown("---")
-        # --- ENHANCEMENT: Bulk upload for thumbnails ---
         uploaded_thumbnails = st.file_uploader(
             "Upload All Thumbnail Ideas",
             accept_multiple_files=True,
@@ -162,7 +161,6 @@ def create_vote_page():
                 content['thumbnails'][f"Thumbnail {i+1}"] = save_uploaded_file(uploaded_file)
 
         st.markdown("---")
-        # --- ENHANCEMENT: Bulk text area for titles ---
         titles_text = st.text_area("Paste All Title Ideas (one title per line)")
         if titles_text:
             titles_list = [line.strip() for line in titles_text.split('\n') if line.strip()]
@@ -327,41 +325,23 @@ def team_voting_page():
             with st.container(border=True):
                 st.markdown(f"### Voting on: {selected_poll_title}")
                 
-                if selected_poll['vote_type'] == "Internal Shortlisting":
-                    with st.form(key=f"reindex_shortlist_form_{selected_poll['id']}"):
-                        st.subheader("Thumbnails")
-                        thumbnails = content.get('thumbnails', {})
-                        thumb_selections = {}
-                        if thumbnails:
-                            num_thumbnails = len(thumbnails)
-                            num_cols = 5
-                            thumbnail_items = list(thumbnails.items())
-                            for i in range(0, num_thumbnails, num_cols):
-                                cols = st.columns(num_cols)
-                                row_items = thumbnail_items[i:i + num_cols]
-                                for j, (thumb_name, thumb_path) in enumerate(row_items):
-                                    with cols[j]:
-                                        st.image(thumb_path, use_container_width=True)
-                                        thumb_selections[thumb_name] = st.checkbox(f"Keep {thumb_name}", key=f"thumb_cb_{selected_poll['id']}_{thumb_name}")
+                is_multi_select = (selected_poll['vote_type'] == "Internal Shortlisting") or ('themes' in content and len(content.get('themes', [])) > 1)
+                
+                if is_multi_select:
+                    with st.form(key=f"multi_select_form_{selected_poll['id']}"):
+                        st.write("**Select all the options you approve of:**")
+                        options = []
+                        if 'themes' in content: options.extend([t['name'] for t in content['themes']])
+                        if 'thumbnails' in content: options.extend(list(content.get('thumbnails', {}).keys()))
+                        if 'titles' in content: options.extend(list(content.get('titles', {}).keys()))
                         
-                        st.markdown("---")
-                        st.subheader("Titles")
-                        titles = content.get('titles', {})
-                        title_selections = {}
-                        if titles:
-                            for title_name, title_text in titles.items():
-                                title_selections[title_name] = st.checkbox(title_text, key=f"title_cb_{selected_poll['id']}_{title_name}")
-
+                        selections = st.multiselect("Your Selections:", options)
                         submitted = st.form_submit_button("Submit Selections")
                         if submitted:
-                            kept_thumbnails = [name for name, selected in thumb_selections.items() if selected]
-                            kept_titles = [name for name, selected in title_selections.items() if selected]
-                            for thumb in kept_thumbnails:
-                                conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Keep', thumb))
-                            for title in kept_titles:
-                                 conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Keep', title))
+                            for item in selections:
+                                conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Selected', item))
                             conn.commit()
-                            st.success("Your shortlist selections have been saved!"); st.rerun()
+                            st.success("Your selections have been saved!"); st.rerun()
                 else:
                     render_poll_content(selected_poll['content_json'])
                     st.markdown("---")
