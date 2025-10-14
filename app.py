@@ -3,10 +3,29 @@ import sqlite3
 import os
 import uuid
 from datetime import datetime
-import requests  # Added for webhook
 import pandas as pd
 import json
 from PIL import UnidentifiedImageError
+
+# ==========================================
+# 🔐 CONFIGURATION - EDIT THESE VALUES ONLY
+# ==========================================
+
+# Slack Bot Token (starts with xoxb-)
+SLACK_BOT_TOKEN = "xoxb-YOUR-TOKEN-HERE"  # ⬅️ REPLACE THIS
+
+# Slack Channel ID where notifications will be sent
+SLACK_CHANNEL_ID = "C01234ABCDE"  # ⬅️ REPLACE THIS (e.g., C09L65S88C9)
+
+# Manager Password
+MANAGER_PASSWORD = "Learnapp.123"
+
+# Enable/Disable Slack Notifications
+ENABLE_SLACK = True  # Set to False to disable Slack temporarily
+
+# ==========================================
+# END OF CONFIGURATION
+# ==========================================
 
 # --- APP CONFIGURATION ---
 st.set_page_config(
@@ -20,18 +39,6 @@ UPLOAD_DIR = "uploads"
 DB_NAME = "workflow.db"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
-
-# --- SECURITY & CONFIGURATION (from secrets.toml) ---
-SLACK_WEBHOOK_URL = st.secrets.get("SLACK_BOT_TOKEN", "")  # Using old variable name for compatibility
-TEAM_CHANNELS = {
-    "Writer": st.secrets.get("WRITER_SLACK_CHANNEL_ID", ""),
-    "Graphic Team": st.secrets.get("GRAPHIC_SLACK_CHANNEL_ID", ""),
-    "Editor": st.secrets.get("EDITOR_SLACK_CHANNEL_ID", ""),
-    "Reindex Team": st.secrets.get("REINDEX_SLACK_CHANNEL_ID", ""),
-    "Social Team": st.secrets.get("SOCIAL_SLACK_CHANNEL_ID", ""),
-    "Company-Wide": st.secrets.get("COMPANY_WIDE_SLACK_CHANNEL_ID", "")
-}
-MANAGER_PASSWORD = st.secrets.get("MANAGER_PASSWORD", "Learnapp.123")
 
 
 # --- DATABASE HELPERS ---
@@ -59,52 +66,59 @@ def save_uploaded_file(uploaded_file):
     return None
 
 def send_slack_notification(team, message):
-    """Send notification using Slack Webhook"""
-    if not SLACK_WEBHOOK_URL:
-        st.warning(f"Slack webhook not configured. Notification not sent.")
+    """Send notification to Slack using Bot Token"""
+    
+    # Check if Slack is enabled
+    if not ENABLE_SLACK:
+        st.info(f"📋 Notification (Slack disabled): {message}")
         return
     
-    # Check if placeholder URL
-    if SLACK_WEBHOOK_URL.startswith("YAHAN_APNA") or SLACK_WEBHOOK_URL == "YOUR_WEBHOOK_URL":
-        st.error("⚠️ Please update the webhook URL in secrets.toml file!")
-        st.info("👉 Go to https://api.slack.com/apps to create a new webhook")
-        return
-    
-    # Check if URL format is correct
-    if not SLACK_WEBHOOK_URL.startswith("https://hooks.slack.com/services/"):
-        st.error("⚠️ Invalid webhook URL format!")
-        st.info("URL should start with: https://hooks.slack.com/services/")
+    # Check if credentials are configured
+    if SLACK_BOT_TOKEN == "xoxb-YOUR-TOKEN-HERE" or SLACK_CHANNEL_ID == "C01234ABCDE":
+        st.warning("⚠️ Slack credentials not configured. Please update SLACK_BOT_TOKEN and SLACK_CHANNEL_ID in the code.")
+        st.info(f"📋 Notification message: {message}")
         return
     
     try:
-        # Webhook ke liye simple payload
-        payload = {
-            "text": f"*{team} Team Update*\n{message}"
-        }
+        # Import Slack SDK
+        from slack_sdk import WebClient
+        from slack_sdk.errors import SlackApiError
         
-        response = requests.post(
-            SLACK_WEBHOOK_URL,
-            json=payload,
-            headers={'Content-Type': 'application/json'},
-            timeout=10  # 10 second timeout
+        # Initialize Slack client
+        client = WebClient(token=SLACK_BOT_TOKEN)
+        
+        # Format message with team name
+        formatted_message = f"*{team} Team Update*\n{message}"
+        
+        # Send message
+        response = client.chat_postMessage(
+            channel=SLACK_CHANNEL_ID,
+            text=formatted_message
         )
         
-        if response.status_code == 200:
-            st.success("🚀 Voting notification sent to Slack!")
-        elif response.status_code == 404:
-            st.error("❌ Webhook URL is invalid or expired!")
-            st.info("Please create a new webhook at: https://api.slack.com/apps")
-            st.caption(f"Error details: {response.text}")
+        if response["ok"]:
+            st.success("🚀 Notification sent to Slack!")
         else:
-            st.error(f"Slack notification failed. Status code: {response.status_code}")
-            st.caption(f"Response: {response.text}")
+            st.error(f"Failed to send Slack notification: {response}")
             
-    except requests.exceptions.Timeout:
-        st.error("⏰ Request timeout! Slack took too long to respond.")
-    except requests.exceptions.ConnectionError:
-        st.error("🌐 Connection error! Check your internet connection.")
+    except ImportError:
+        st.error("❌ Slack SDK not installed. Run: pip install slack-sdk")
+    except SlackApiError as e:
+        error_msg = e.response.get('error', 'Unknown error')
+        st.error(f"❌ Slack API Error: {error_msg}")
+        
+        # Helpful error messages
+        if error_msg == "not_authed" or error_msg == "invalid_auth":
+            st.info("🔑 Your Bot Token is invalid or expired. Please check SLACK_BOT_TOKEN.")
+        elif error_msg == "channel_not_found":
+            st.info("📢 Channel not found. Please verify SLACK_CHANNEL_ID is correct.")
+        elif error_msg == "missing_scope":
+            st.info("🔐 Missing permissions. Add these scopes: chat:write, chat:write.public")
+        
+        st.caption(f"Message was: {message}")
     except Exception as e:
-        st.error(f"Error sending Slack notification: {str(e)}")
+        st.error(f"❌ Unexpected error: {str(e)}")
+        st.caption(f"Message was: {message}")
 
 # --- UI HELPER FOR DYNAMIC ATTACHMENTS ---
 def additional_attachments_form():
@@ -506,6 +520,17 @@ def results_page():
 def main():
     initialize_db()
     st.title("Learnapp Voting Tool")
+    
+    # Configuration status indicator
+    with st.sidebar:
+        st.header("⚙️ Configuration")
+        if SLACK_BOT_TOKEN == "xoxb-YOUR-TOKEN-HERE":
+            st.error("🔴 Slack Not Configured")
+        else:
+            st.success("🟢 Slack Configured")
+        
+        st.caption(f"Notifications: {'Enabled' if ENABLE_SLACK else 'Disabled'}")
+    
     tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Voting", "🏆 Results"])
 
     with tab1: create_vote_page()
