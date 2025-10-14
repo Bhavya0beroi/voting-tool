@@ -74,7 +74,7 @@ def send_slack_notification(team, message):
         return
     
     # Check if credentials are configured
-    if SLACK_BOT_TOKEN == "xoxb-YOUR-TOKEN-HERE" or SLACK_CHANNEL_ID == "C01234ABCDE":
+    if SLACK_BOT_TOKEN == "xoxb-1778615088705-9691584018598-wIW2cLOy9nyTOwE53ZkDnppS" or SLACK_CHANNEL_ID == "C09L65S88C9":
         st.warning("⚠️ Slack credentials not configured. Please update SLACK_BOT_TOKEN and SLACK_CHANNEL_ID in the code.")
         st.info(f"📋 Notification message: {message}")
         return
