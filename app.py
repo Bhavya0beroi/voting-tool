@@ -64,6 +64,11 @@ def send_slack_notification(team, message):
         st.warning(f"Slack webhook not configured. Notification not sent.")
         return
     
+    # DEBUG: Webhook URL check (Testing ke liye - baad mein hata dena)
+    if SLACK_WEBHOOK_URL.startswith("YAHAN_APNA"):
+        st.error("⚠️ Please update the webhook URL in secrets.toml file!")
+        return
+    
     try:
         # Webhook ke liye simple payload
         payload = {
@@ -80,6 +85,7 @@ def send_slack_notification(team, message):
             st.success("🚀 Voting notification sent to Slack!")
         else:
             st.error(f"Slack notification failed. Status code: {response.status_code}")
+            st.error(f"Response: {response.text}")  # Ye batayega exact error kya hai
             
     except Exception as e:
         st.error(f"Error sending Slack notification: {str(e)}")
