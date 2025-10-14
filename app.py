@@ -3,8 +3,7 @@ import sqlite3
 import os
 import uuid
 from datetime import datetime
-from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
+import requests  # Added for webhook
 import pandas as pd
 import json
 from PIL import UnidentifiedImageError
@@ -23,7 +22,7 @@ if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
 # --- SECURITY & CONFIGURATION (from secrets.toml) ---
-SLACK_BOT_TOKEN = st.secrets.get("SLACK_BOT_TOKEN", "")
+SLACK_WEBHOOK_URL = st.secrets.get("SLACK_WEBHOOK_URL", "")
 TEAM_CHANNELS = {
     "Writer": st.secrets.get("WRITER_SLACK_CHANNEL_ID", ""),
     "Graphic Team": st.secrets.get("GRAPHIC_SLACK_CHANNEL_ID", ""),
@@ -60,14 +59,30 @@ def save_uploaded_file(uploaded_file):
     return None
 
 def send_slack_notification(team, message):
-    channel_id = TEAM_CHANNELS.get(team)
-    if not SLACK_BOT_TOKEN or not channel_id:
-        st.warning(f"Slack not configured for {team}. Notification not sent."); return
+    """Send notification using Slack Webhook"""
+    if not SLACK_WEBHOOK_URL:
+        st.warning(f"Slack webhook not configured. Notification not sent.")
+        return
+    
     try:
-        client = WebClient(token=SLACK_BOT_TOKEN)
-        client.chat_postMessage(channel=channel_id, text=message)
-        st.success("🚀 Voting notification sent to Slack!")
-    except SlackApiError as e: st.error(f"Error sending Slack notification: {e.response['error']}")
+        # Webhook ke liye simple payload
+        payload = {
+            "text": f"*{team} Team Update*\n{message}"
+        }
+        
+        response = requests.post(
+            SLACK_WEBHOOK_URL,
+            json=payload,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            st.success("🚀 Voting notification sent to Slack!")
+        else:
+            st.error(f"Slack notification failed. Status code: {response.status_code}")
+            
+    except Exception as e:
+        st.error(f"Error sending Slack notification: {str(e)}")
 
 # --- UI HELPER FOR DYNAMIC ATTACHMENTS ---
 def additional_attachments_form():
@@ -478,4 +493,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
