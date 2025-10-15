@@ -465,26 +465,77 @@ def team_voting_page():
             st.markdown(f"### 🗳️ {selected_poll['project_name']} - {selected_poll['vote_type']}")
             st.caption(f"Submitted by: {selected_poll['submitter_name']}")
             st.markdown("---")
+            
+            if selected_poll['vote_type'] == "Internal Shortlisting":
+                with st.form(key=f"reindex_shortlist_form_{selected_poll['id']}"):
+                    st.subheader("Thumbnails")
+                    thumbnails = content.get('thumbnails', {})
+                    thumb_selections = {}
+                    if thumbnails:
+                        num_thumbnails = len(thumbnails)
+                        num_cols = 5
+                        thumbnail_items = list(thumbnails.items())
+                        for i in range(0, num_thumbnails, num_cols):
+                            cols = st.columns(num_cols)
+                            row_items = thumbnail_items[i:i + num_cols]
+                            for j, (thumb_name, thumb_path) in enumerate(row_items):
+                                with cols[j]:
+                                    st.image(thumb_path, use_container_width=True)
+                                    thumb_selections[thumb_name] = st.checkbox(f"Keep {thumb_name}", key=f"thumb_cb_{selected_poll['id']}_{thumb_name}")
+
+                    st.markdown("---")
+                    st.subheader("Titles")
+                    titles = content.get('titles', {})
+                    title_selections = {}
+                    if titles:
+                        for title_name, title_text in titles.items():
+                            title_selections[title_name] = st.checkbox(title_text, key=f"title_cb_{selected_poll['id']}_{title_name}")
+
+                    submitted = st.form_submit_button("Submit Selections")
+                    if submitted:
+                        kept_thumbnails = [name for name, selected in thumb_selections.items() if selected]
+                        kept_titles = [name for name, selected in title_selections.items() if selected]
+                        for thumb in kept_thumbnails:
+                            conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Keep', thumb))
+                        for title in kept_titles:
+                            conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)", (selected_poll['id'], voter_name, 'Keep', title))
+                        conn.commit()
+                        st.success("Your shortlist selections have been saved!")
+                        st.rerun()
+            else:
+                render_poll_content(selected_poll['content_json'])
+                st.markdown("---")
+                with st.form(key=f"team_vote_form_{selected_poll['id']}"):
+                    decision = st.radio("Your Decision:", ["👍 Approve", "👎 Reject"], horizontal=True)
+                    rating = st.slider("Rating", 1, 10, 5)
+                    comment = st.text_area("Comments (Optional)")
+                    submitted = st.form_submit_button("Submit Vote")
+                    if submitted:
+                        vote_decision = "Approved" if decision == "👍 Approve" else "Rejected"
+                        conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)", (selected_poll['id'], voter_name, vote_decision, comment, rating))
+                        conn.commit()
+                        st.success(f"Your '{vote_decision}' vote is recorded!")
+                        st.balloons()
+                        st.rerun()
+        
+        # Close connection and return - DON'T show the "already voted" section for Slack users
+        conn.close()
+        return
+    
+    # NORMAL FLOW - Show all polls with dropdown (not from Slack)
+    all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
+
+    polls_to_vote_on = [p for p in all_active_polls if not conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (p['id'], voter_name)).fetchone()]
+    polls_voted_on = [p for p in all_active_polls if conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (p['id'], voter_name)).fetchone()]
+
+    st.subheader("Action Required: Your Polls to Vote On", divider='blue')
+    if not polls_to_vote_on:
+        st.success("✅ You are all caught up!")
     else:
-        # Normal flow - show all polls with dropdown
-        all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
+        poll_options = {f"{p['project_name']} - {p['vote_type']} (by {p['submitter_name']})": p for p in polls_to_vote_on}
+        selected_poll_title = st.selectbox("Select a Poll to Vote On:", options=["-- Please select --"] + list(poll_options.keys()))
 
-        polls_to_vote_on = [p for p in all_active_polls if not conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (p['id'], voter_name)).fetchone()]
-        polls_voted_on = [p for p in all_active_polls if conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (p['id'], voter_name)).fetchone()]
-
-        st.subheader("Action Required: Your Polls to Vote On", divider='blue')
-        if not polls_to_vote_on:
-            st.success("✅ You are all caught up!")
-            conn.close()
-            return
-        else:
-            poll_options = {f"{p['project_name']} - {p['vote_type']} (by {p['submitter_name']})": p for p in polls_to_vote_on}
-            selected_poll_title = st.selectbox("Select a Poll to Vote On:", options=["-- Please select --"] + list(poll_options.keys()))
-
-            if selected_poll_title == "-- Please select --":
-                conn.close()
-                return
-                
+        if selected_poll_title != "-- Please select --":
             selected_poll = poll_options[selected_poll_title]
             content = json.loads(selected_poll['content_json'])
 
@@ -541,15 +592,17 @@ def team_voting_page():
                             conn.commit()
                             st.success(f"Your '{vote_decision}' vote is recorded!")
                             st.balloons()
+                            st.rerun()
 
-    with st.expander("Polls You've Already Voted On"):
-        if not polls_voted_on: 
-            st.info("You haven't voted on any active polls yet.")
-        else:
-            for poll in polls_voted_on:
-                my_vote = conn.execute("SELECT * FROM votes WHERE poll_id = ? AND voter_name = ?", (poll['id'], voter_name)).fetchone()
-                if my_vote: 
-                    st.markdown(f"**{poll['project_name']}** | `{poll['vote_type']}` - You voted: **{my_vote['vote_decision']}**")
+        with st.expander("Polls You've Already Voted On"):
+            if not polls_voted_on: 
+                st.info("You haven't voted on any active polls yet.")
+            else:
+                for poll in polls_voted_on:
+                    my_vote = conn.execute("SELECT * FROM votes WHERE poll_id = ? AND voter_name = ?", (poll['id'], voter_name)).fetchone()
+                    if my_vote: 
+                        st.markdown(f"**{poll['project_name']}** | `{poll['vote_type']}` - You voted: **{my_vote['vote_decision']}**")
+    
     conn.close()
 
 
