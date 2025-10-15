@@ -473,7 +473,10 @@ def results_page():
     st.header("🏆 Results & History", divider='orange')
     conn = get_db_connection()
     
-    result_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status LIKE 'completed%' OR p.id IN (SELECT DISTINCT poll_id FROM votes)").fetchall()
+    # Show ALL polls that have votes (completed OR active with votes)
+    result_polls = conn.execute(
+        "SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.id IN (SELECT DISTINCT poll_id FROM votes) ORDER BY p.created_at DESC"
+    ).fetchall()
     
     if not result_polls:
         st.info("No results to show yet. Cast a vote to see live results here."); conn.close(); return
@@ -543,7 +546,31 @@ def results_page():
                 elif poll['status'] == 'active_team_poll':
                     if st.button("🔒 Finalize and Close Poll", key=f"close_from_results_{poll['id']}"):
                         conn.execute("UPDATE polls SET status = 'completed_team_vote' WHERE id = ?", (poll['id'],))
-                        conn.commit(); st.rerun()
+                        conn.commit()
+                        
+                        # Send Slack notification that voting is closed
+                        poll_team = poll['team']
+                        poll_project = poll['project_name']
+                        
+                        # Calculate final results
+                        final_votes = conn.execute("SELECT * FROM votes WHERE poll_id = ?", (poll['id'],)).fetchall()
+                        if final_votes:
+                            votes_df = pd.DataFrame([dict(row) for row in final_votes])
+                            
+                            # Count approvals and rejections
+                            if 'vote_decision' in votes_df.columns:
+                                team_votes = votes_df[votes_df['vote_decision'].isin(['Approved', 'Rejected'])]
+                                if not team_votes.empty:
+                                    approve_count = len(team_votes[team_votes['vote_decision'] == 'Approved'])
+                                    reject_count = len(team_votes[team_votes['vote_decision'] == 'Rejected'])
+                                    avg_rating = pd.to_numeric(votes_df['rating'], errors='coerce').mean() if 'rating' in votes_df.columns else 0
+                                    
+                                    result_message = f"🏁 Voting closed for project '{poll_project}'\n\n📊 Final Results:\n✅ Approved: {approve_count}\n❌ Rejected: {reject_count}\n⭐ Average Rating: {avg_rating:.1f}/10"
+                                    
+                                    send_slack_notification(poll_team, result_message)
+                        
+                        st.success("✅ Poll has been closed!")
+                        st.rerun()
 
                 if st.button("🔄 Start Revision", key=f"revise_{poll['id']}"):
                     st.session_state['revision_data'] = {
@@ -559,22 +586,15 @@ def main():
     # Check for URL parameters FIRST
     query_params = st.query_params
     
-    # DEBUG: Show what parameters we got
-    st.write(f"🔍 DEBUG - Query params in main(): {dict(query_params)}")
-    
     # Check if coming from Slack with poll parameter
     has_poll_param = "poll" in query_params
     has_tab_param = "tab" in query_params and query_params["tab"] == "team-voting"
-    
-    st.write(f"🔍 DEBUG - has_poll_param: {has_poll_param}, has_tab_param: {has_tab_param}")
     
     # If coming from Slack with specific poll, show ONLY voting page
     if has_tab_param and has_poll_param:
         # Direct voting mode - No sidebar, no tabs, just voting
         st.title("Learnapp Voting Tool")
         st.info("📬 You've been redirected from a Slack notification. Vote below! 👇")
-        
-        st.write("✅ DEBUG - Calling team_voting_page() directly")
         
         # Show ONLY the team voting page
         team_voting_page()
