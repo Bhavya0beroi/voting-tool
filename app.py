@@ -92,7 +92,7 @@ def save_uploaded_file(uploaded_file):
     return None
 
 def send_slack_notification(team, message, poll_id=None, team_param=None):
-    """Send notification to Slack using Bot Token"""
+    """Send notification to Slack using Bot Token with poll-specific link"""
     
     # Check if Slack is enabled
     if not ENABLE_SLACK:
@@ -113,13 +113,18 @@ def send_slack_notification(team, message, poll_id=None, team_param=None):
         # Initialize Slack client
         client = WebClient(token=SLACK_BOT_TOKEN)
         
-        # Format message with team name and direct link to Team Voting with poll ID and team
+        # IMPORTANT: Build URL with poll ID and team parameter
         if poll_id and team_param:
+            # This creates a direct link to specific poll
             voting_link = f"{APP_URL}?tab=team-voting&poll={poll_id}&team={team_param}"
+            formatted_message = f"*{team} Team Update*\n{message}\n\n👉 <{voting_link}|Click here to vote on this submission>"
         else:
+            # Fallback: general voting page
             voting_link = f"{APP_URL}?tab=team-voting"
+            formatted_message = f"*{team} Team Update*\n{message}\n\n👉 <{voting_link}|Click here to vote>"
         
-        formatted_message = f"*{team} Team Update*\n{message}\n\n👉 <{voting_link}|Click here to vote>"
+        # Debug: Show what URL is being sent (remove after testing)
+        st.caption(f"Slack link: {voting_link}")
         
         # Send message
         response = client.chat_postMessage(
@@ -294,7 +299,7 @@ def create_vote_page():
         
         st.balloons(); st.success("Submission successful!")
         
-        # Send notification with team-specific voting link
+        # Send notification with team-specific voting link INCLUDING POLL ID
         team_param = team.lower().replace(" ", "-")  # "Graphic Team" -> "graphic-team"
         send_slack_notification(team, f"🗳️ New submission from {submitter_name} for project '{project_name}' is ready for review.", poll_id, team_param)
 
