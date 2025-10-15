@@ -558,6 +558,31 @@ def results_page():
 
 def main():
     initialize_db()
+    
+    # Check for URL parameters FIRST
+    query_params = st.query_params
+    
+    # If coming from Slack with specific poll, show ONLY voting page
+    if "tab" in query_params and query_params["tab"] == "team-voting" and "poll" in query_params:
+        # Direct voting mode - No sidebar, no tabs, just voting
+        st.title("Learnapp Voting Tool")
+        st.info("📬 You've been redirected from a Slack notification. Vote below! 👇")
+        
+        # Show ONLY the team voting page
+        team_voting_page()
+        
+        st.markdown("---")
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("← View All Polls"):
+                # Clear URL parameters to go back to normal view
+                st.query_params.clear()
+                st.rerun()
+        
+        # Don't show sidebar in this mode
+        return
+    
+    # Normal mode with all features
     st.title("Learnapp Voting Tool")
     
     # Configuration status indicator
@@ -571,37 +596,17 @@ def main():
         
         st.caption(f"Notifications: {'Enabled' if ENABLE_SLACK else 'Disabled'}")
     
-    # Check for URL parameter to show Team Voting directly
-    query_params = st.query_params
-    
-    # Debug: Show what parameters are received (remove this after testing)
-    # st.write("Debug - Query Params:", dict(query_params))
-    
-    # If coming from Slack notification with specific poll, show Team Voting directly
-    if "tab" in query_params and query_params["tab"] == "team-voting":
-        # Show a helpful message
-        if "poll" in query_params or "team" in query_params:
-            st.info("📬 You've been redirected from a Slack notification. Vote below! 👇")
-        
-        # Show team voting page directly
-        team_voting_page()
-        
-        st.markdown("---")
-        if st.button("← Back to All Tabs"):
-            st.query_params.clear()
-            st.rerun()
-    else:
-        # Normal tab view
-        tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Voting", "🏆 Results"])
+    # Normal tab view
+    tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Voting", "🏆 Results"])
 
-        with tab1: 
-            create_vote_page()
-        with tab2: 
-            manager_approval_page()
-        with tab3: 
-            team_voting_page()
-        with tab4: 
-            results_page()
+    with tab1: 
+        create_vote_page()
+    with tab2: 
+        manager_approval_page()
+    with tab3: 
+        team_voting_page()
+    with tab4: 
+        results_page()
 
 if __name__ == "__main__":
     main()
