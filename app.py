@@ -22,6 +22,28 @@ except:
     SLACK_CHANNEL_ID = ""
     MANAGER_PASSWORD = "Learnapp.123"
 
+# Auto-detect Streamlit app URL
+def get_app_url():
+    """Automatically detect the Streamlit app URL"""
+    try:
+        # Try to get from Streamlit's session state or config
+        if hasattr(st, 'get_option'):
+            # For deployed apps, use browser_serverAddress
+            server_address = st.config.get_option('browser.serverAddress')
+            server_port = st.config.get_option('browser.serverPort')
+            
+            if server_address and server_address != 'localhost':
+                if server_port and server_port != 80 and server_port != 443:
+                    return f"https://{server_address}:{server_port}"
+                return f"https://{server_address}"
+        
+        # Fallback: Try to detect from query params or session
+        return "https://your-voting-app.streamlit.app"
+    except:
+        return "https://your-voting-app.streamlit.app"
+
+APP_URL = get_app_url()
+
 # Enable/Disable Slack Notifications
 ENABLE_SLACK = True  # Set to False to disable Slack temporarily
 
@@ -89,8 +111,8 @@ def send_slack_notification(team, message):
         # Initialize Slack client
         client = WebClient(token=SLACK_BOT_TOKEN)
         
-        # Format message with team name
-        formatted_message = f"*{team} Team Update*\n{message}"
+        # Format message with team name and clickable link
+        formatted_message = f"*{team} Team Update*\n{message}\n\n👉 <{APP_URL}|Click here to vote>"
         
         # Send message
         response = client.chat_postMessage(
