@@ -427,25 +427,64 @@ def manager_approval_page():
 
 def team_voting_page():
     st.header("👥 Team Voting", divider='green')
+    
+    # Check if coming from Slack with specific poll ID
+    query_params = st.query_params
+    slack_poll_id = query_params.get("poll", None)
+    
     voter_name = st.text_input("Enter Your Name to Vote", key="team_voter_name")
     if not voter_name: 
         st.warning("Please enter your name to see and vote on polls.")
         return
 
     conn = get_db_connection()
-    all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
-
-    polls_to_vote_on = [p for p in all_active_polls if not conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (p['id'], voter_name)).fetchone()]
-    polls_voted_on = [p for p in all_active_polls if conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (p['id'], voter_name)).fetchone()]
-
-    st.subheader("Action Required: Your Polls to Vote On", divider='blue')
-    if not polls_to_vote_on:
-        st.success("✅ You are all caught up!")
+    
+    # If coming from Slack, show ONLY that specific poll
+    if slack_poll_id:
+        specific_poll = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.id = ? AND p.status = 'active_team_poll'", (slack_poll_id,)).fetchone()
+        
+        if not specific_poll:
+            st.error("This poll is no longer active or doesn't exist.")
+            conn.close()
+            return
+        
+        # Check if user already voted
+        already_voted = conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (slack_poll_id, voter_name)).fetchone()
+        
+        if already_voted:
+            st.success(f"✅ You've already voted on this poll!")
+            st.info("Your vote has been recorded. Thank you!")
+            conn.close()
+            return
+        
+        # Show the poll directly without dropdown
+        selected_poll = specific_poll
+        content = json.loads(selected_poll['content_json'])
+        
+        with st.container(border=True):
+            st.markdown(f"### 🗳️ {selected_poll['project_name']} - {selected_poll['vote_type']}")
+            st.caption(f"Submitted by: {selected_poll['submitter_name']}")
+            st.markdown("---")
     else:
-        poll_options = {f"{p['project_name']} - {p['vote_type']} (by {p['submitter_name']})": p for p in polls_to_vote_on}
-        selected_poll_title = st.selectbox("Select a Poll to Vote On:", options=["-- Please select --"] + list(poll_options.keys()))
+        # Normal flow - show all polls with dropdown
+        all_active_polls = conn.execute("SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll'").fetchall()
 
-        if selected_poll_title != "-- Please select --":
+        polls_to_vote_on = [p for p in all_active_polls if not conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (p['id'], voter_name)).fetchone()]
+        polls_voted_on = [p for p in all_active_polls if conn.execute("SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?", (p['id'], voter_name)).fetchone()]
+
+        st.subheader("Action Required: Your Polls to Vote On", divider='blue')
+        if not polls_to_vote_on:
+            st.success("✅ You are all caught up!")
+            conn.close()
+            return
+        else:
+            poll_options = {f"{p['project_name']} - {p['vote_type']} (by {p['submitter_name']})": p for p in polls_to_vote_on}
+            selected_poll_title = st.selectbox("Select a Poll to Vote On:", options=["-- Please select --"] + list(poll_options.keys()))
+
+            if selected_poll_title == "-- Please select --":
+                conn.close()
+                return
+                
             selected_poll = poll_options[selected_poll_title]
             content = json.loads(selected_poll['content_json'])
 
