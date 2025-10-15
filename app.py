@@ -123,9 +123,6 @@ def send_slack_notification(team, message, poll_id=None, team_param=None):
             voting_link = f"{APP_URL}?tab=team-voting"
             formatted_message = f"*{team} Team Update*\n{message}\n\n👉 <{voting_link}|Click here to vote>"
         
-        # Debug: Show what URL is being sent (remove after testing)
-        st.caption(f"Slack link: {voting_link}")
-        
         # Send message
         response = client.chat_postMessage(
             channel=SLACK_CHANNEL_ID,
