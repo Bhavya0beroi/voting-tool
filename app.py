@@ -113,8 +113,9 @@ def send_slack_notification(team, message):
         # Initialize Slack client
         client = WebClient(token=SLACK_BOT_TOKEN)
         
-        # Format message with team name and clickable link
-        formatted_message = f"*{team} Team Update*\n{message}\n\n👉 <{APP_URL}|Click here to vote>"
+        # Format message with team name and direct link to Team Voting tab
+        voting_link = f"{APP_URL}/#team-voting"
+        formatted_message = f"*{team} Team Update*\n{message}\n\n👉 <{voting_link}|Click here to vote>"
         
         # Send message
         response = client.chat_postMessage(
