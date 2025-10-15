@@ -83,7 +83,8 @@ def initialize_db():
     conn.commit()
     conn.close()
 
-# --- UTILITY FUNCTIONS ---
+# --- UI HELPER FOR DYNAMIC ATTACHMENTS ---
+def additional_attachments_form():
 def save_uploaded_file(uploaded_file):
     if uploaded_file:
         file_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{uploaded_file.name}")
@@ -152,6 +153,108 @@ def send_slack_notification(team, message, poll_id=None, team_param=None):
     except Exception as e:
         st.error(f"❌ Unexpected error: {str(e)}")
         st.caption(f"Message was: {message}")
+
+# --- DIRECT VOTING PAGE (for Slack links) ---
+def team_voting_page_direct():
+    """Simplified voting page for direct Slack links - shows ONE poll only, no dropdown"""
+    st.header("👥 Team Voting", divider='green')
+    
+    # Get poll ID from URL
+    query_params = st.query_params
+    specific_poll_id = query_params.get("poll")
+    
+    voter_name = st.text_input("Enter Your Name to Vote", key="team_voter_name")
+    
+    if not voter_name:
+        st.warning("Please enter your name to see and vote on polls.")
+        return
+    
+    conn = get_db_connection()
+    
+    # Load ONLY the specific poll from URL
+    poll = conn.execute(
+        "SELECT p.*, pr.name as project_name FROM polls p JOIN projects pr ON p.project_id = pr.id WHERE p.status = 'active_team_poll' AND p.id = ?",
+        (specific_poll_id,)
+    ).fetchone()
+    
+    if not poll:
+        st.error("❌ Poll not found or already closed.")
+        conn.close()
+        return
+    
+    # Check if user already voted
+    already_voted = conn.execute(
+        "SELECT id FROM votes WHERE poll_id = ? AND voter_name = ?",
+        (poll['id'], voter_name)
+    ).fetchone()
+    
+    if already_voted:
+        st.info("✅ You have already voted on this poll!")
+        st.balloons()
+        conn.close()
+        return
+    
+    # Show poll details
+    st.markdown(f"### 📋 {poll['project_name']}")
+    st.caption(f"{poll['vote_type']} by {poll['submitter_name']}")
+    st.markdown("---")
+    
+    # Render poll content and voting form
+    content = json.loads(poll['content_json'])
+    
+    if poll['vote_type'] == "Internal Shortlisting":
+        with st.form(key=f"direct_shortlist_form"):
+            st.subheader("Thumbnails")
+            thumbnails = content.get('thumbnails', {})
+            thumb_selections = {}
+            if thumbnails:
+                num_cols = 5
+                thumbnail_items = list(thumbnails.items())
+                for i in range(0, len(thumbnail_items), num_cols):
+                    cols = st.columns(num_cols)
+                    row_items = thumbnail_items[i:i + num_cols]
+                    for j, (thumb_name, thumb_path) in enumerate(row_items):
+                        with cols[j]:
+                            st.image(thumb_path, use_container_width=True)
+                            thumb_selections[thumb_name] = st.checkbox(f"Keep {thumb_name}", key=f"thumb_{thumb_name}")
+            
+            st.markdown("---")
+            st.subheader("Titles")
+            titles = content.get('titles', {})
+            title_selections = {}
+            if titles:
+                for title_name, title_text in titles.items():
+                    title_selections[title_name] = st.checkbox(title_text, key=f"title_{title_name}")
+
+            if st.form_submit_button("Submit Selections", type="primary", use_container_width=True):
+                kept_thumbnails = [name for name, selected in thumb_selections.items() if selected]
+                kept_titles = [name for name, selected in title_selections.items() if selected]
+                for thumb in kept_thumbnails:
+                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)",
+                                (poll['id'], voter_name, 'Keep', thumb))
+                for title in kept_titles:
+                    conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, item_id) VALUES (?, ?, ?, ?)",
+                                (poll['id'], voter_name, 'Keep', title))
+                conn.commit()
+                conn.close()
+                st.success("✅ Your shortlist selections have been saved!")
+                st.balloons()
+                st.rerun()
+    else:
+        render_poll_content(content)
+        st.markdown("---")
+        with st.form(key=f"direct_vote_form"):
+            decision = st.radio("Your Decision:", ["👍 Approve", "👎 Reject"], horizontal=True)
+            rating = st.slider("Rating", 1, 10, 5)
+            comment = st.text_area("Comments (Optional)")
+            if st.form_submit_button("Submit Vote", type="primary", use_container_width=True):
+                vote_decision = "Approved" if decision == "👍 Approve" else "Rejected"
+                conn.execute("INSERT INTO votes (poll_id, voter_name, vote_decision, comment, rating) VALUES (?, ?, ?, ?, ?)",
+                            (poll['id'], voter_name, vote_decision, comment, rating))
+                conn.commit()
+                conn.close()
+                st.success(f"✅ Your '{vote_decision}' vote is recorded!")
+                st.balloons()
 
 # --- UI HELPER FOR DYNAMIC ATTACHMENTS ---
 def additional_attachments_form():
@@ -592,25 +695,26 @@ def main():
     
     # If coming from Slack with specific poll, show ONLY voting page
     if has_tab_param and has_poll_param:
-        # Direct voting mode - No sidebar, no tabs, just voting
+        # ============ DIRECT VOTING MODE ============
+        # This completely bypasses the normal tab system
         st.title("Learnapp Voting Tool")
         st.info("📬 You've been redirected from a Slack notification. Vote below! 👇")
         
-        # Show ONLY the team voting page
-        team_voting_page()
+        # Show ONLY the team voting page (no tabs, no other pages)
+        team_voting_page_direct()  # Using a different function for direct mode
         
         st.markdown("---")
         col1, col2 = st.columns([1, 4])
         with col1:
             if st.button("← View All Polls"):
-                # Clear URL parameters to go back to normal view
                 st.query_params.clear()
                 st.rerun()
         
-        # Don't show sidebar or tabs in this mode
+        # CRITICAL: Return here so tabs section NEVER runs
         return
     
-    # Normal mode with all features
+    # ============ NORMAL MODE WITH TABS ============
+    # This section only runs if NOT coming from Slack
     st.title("Learnapp Voting Tool")
     
     # Configuration status indicator
@@ -632,7 +736,7 @@ def main():
     with tab2: 
         manager_approval_page()
     with tab3: 
-        team_voting_page()
+        team_voting_page()  # Normal multi-poll version
     with tab4: 
         results_page()
 
