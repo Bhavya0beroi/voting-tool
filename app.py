@@ -113,8 +113,8 @@ def send_slack_notification(team, message):
         # Initialize Slack client
         client = WebClient(token=SLACK_BOT_TOKEN)
         
-        # Format message with team name and direct link to Team Voting tab
-        voting_link = f"{APP_URL}/#team-voting"
+        # Format message with team name and direct link to Team Voting tab using query parameter
+        voting_link = f"{APP_URL}?tab=team-voting"
         formatted_message = f"*{team} Team Update*\n{message}\n\n👉 <{voting_link}|Click here to vote>"
         
         # Send message
@@ -559,12 +559,29 @@ def main():
         
         st.caption(f"Notifications: {'Enabled' if ENABLE_SLACK else 'Disabled'}")
     
-    tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Voting", "🏆 Results"])
+    # Check for URL parameter to show Team Voting directly
+    query_params = st.query_params
+    
+    # If coming from Slack notification, show Team Voting directly
+    if "tab" in query_params and query_params["tab"] == "team-voting":
+        st.info("📬 You've been redirected from a Slack notification. Vote below! 👇")
+        team_voting_page()
+        st.markdown("---")
+        if st.button("← Back to All Tabs"):
+            st.query_params.clear()
+            st.rerun()
+    else:
+        # Normal tab view
+        tab1, tab2, tab3, tab4 = st.tabs(["📮 Create Vote", "👨‍💼 Manager Approvals", "👥 Team Voting", "🏆 Results"])
 
-    with tab1: create_vote_page()
-    with tab2: manager_approval_page()
-    with tab3: team_voting_page()
-    with tab4: results_page()
+        with tab1: 
+            create_vote_page()
+        with tab2: 
+            manager_approval_page()
+        with tab3: 
+            team_voting_page()
+        with tab4: 
+            results_page()
 
 if __name__ == "__main__":
     main()
