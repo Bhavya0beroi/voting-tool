@@ -659,7 +659,52 @@ def results_page():
                         st.write("Tally of 'Keep' votes:")
                         keep_counts = df['item_id'].value_counts().reset_index()
                         keep_counts.columns = ['Item', 'Keep Votes']
-                        st.dataframe(keep_counts)
+                        
+                        # Get the original content to show actual thumbnails and titles
+                        content = json.loads(poll['content_json'])
+                        thumbnails = content.get('thumbnails', {})
+                        titles = content.get('titles', {})
+                        
+                        # Display thumbnails with images
+                        if thumbnails:
+                            st.subheader("📸 Thumbnail Results")
+                            thumb_votes = keep_counts[keep_counts['Item'].str.startswith('Thumbnail')]
+                            
+                            if not thumb_votes.empty:
+                                for _, row in thumb_votes.iterrows():
+                                    item_name = row['Item']
+                                    vote_count = row['Keep Votes']
+                                    
+                                    with st.container(border=True):
+                                        col1, col2 = st.columns([1, 3])
+                                        with col1:
+                                            if item_name in thumbnails:
+                                                try:
+                                                    st.image(thumbnails[item_name], width=150)
+                                                except:
+                                                    st.error("Could not load image")
+                                        with col2:
+                                            st.markdown(f"### {item_name}")
+                                            st.metric("Votes Received", vote_count)
+                            else:
+                                st.info("No thumbnail votes yet")
+                        
+                        # Display titles with actual text
+                        if titles:
+                            st.subheader("📝 Title Results")
+                            title_votes = keep_counts[keep_counts['Item'].str.startswith('Title')]
+                            
+                            if not title_votes.empty:
+                                for _, row in title_votes.iterrows():
+                                    item_name = row['Item']
+                                    vote_count = row['Keep Votes']
+                                    actual_title_text = titles.get(item_name, item_name)
+                                    
+                                    with st.container(border=True):
+                                        st.markdown(f"### 💡 {actual_title_text}")
+                                        st.metric("Votes Received", vote_count)
+                            else:
+                                st.info("No title votes yet")
                     else:
                         total_votes = len(df)
                         avg_rating_col, total_votes_col = st.columns(2)
