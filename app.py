@@ -569,10 +569,18 @@ def main():
     # Check for URL parameter to show Team Voting directly
     query_params = st.query_params
     
-    # If coming from Slack notification, show Team Voting directly
+    # Debug: Show what parameters are received (remove this after testing)
+    # st.write("Debug - Query Params:", dict(query_params))
+    
+    # If coming from Slack notification with specific poll, show Team Voting directly
     if "tab" in query_params and query_params["tab"] == "team-voting":
-        st.info("📬 You've been redirected from a Slack notification. Vote below! 👇")
+        # Show a helpful message
+        if "poll" in query_params or "team" in query_params:
+            st.info("📬 You've been redirected from a Slack notification. Vote below! 👇")
+        
+        # Show team voting page directly
         team_voting_page()
+        
         st.markdown("---")
         if st.button("← Back to All Tabs"):
             st.query_params.clear()
