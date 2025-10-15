@@ -26,21 +26,23 @@ except:
 def get_app_url():
     """Automatically detect the Streamlit app URL"""
     try:
-        # Try to get from Streamlit's session state or config
-        if hasattr(st, 'get_option'):
-            # For deployed apps, use browser_serverAddress
-            server_address = st.config.get_option('browser.serverAddress')
-            server_port = st.config.get_option('browser.serverPort')
-            
-            if server_address and server_address != 'localhost':
-                if server_port and server_port != 80 and server_port != 443:
-                    return f"https://{server_address}:{server_port}"
-                return f"https://{server_address}"
+        # Method 1: Try from secrets (manual override)
+        if 'APP_URL' in st.secrets:
+            return st.secrets['APP_URL']
         
-        # Fallback: Try to detect from query params or session
-        return "https://your-voting-app.streamlit.app"
+        # Method 2: Try from environment variable (Streamlit Cloud sets this)
+        import os
+        if 'STREAMLIT_SERVER_HEADLESS' in os.environ:
+            # Running on Streamlit Cloud - try to get hostname
+            hostname = os.environ.get('HOSTNAME', '')
+            if hostname:
+                return f"https://{hostname}"
+        
+        # Method 3: Fallback - hardcoded app URL
+        return "https://voting-tool-y6ctrfdb95wzcik3i8vl6y.streamlit.app"
+        
     except:
-        return "https://your-voting-app.streamlit.app"
+        return "https://voting-tool-y6ctrfdb95wzcik3i8vl6y.streamlit.app"
 
 APP_URL = get_app_url()
 
