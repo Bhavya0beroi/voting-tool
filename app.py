@@ -559,11 +559,22 @@ def main():
     # Check for URL parameters FIRST
     query_params = st.query_params
     
+    # DEBUG: Show what parameters we got
+    st.write(f"🔍 DEBUG - Query params in main(): {dict(query_params)}")
+    
+    # Check if coming from Slack with poll parameter
+    has_poll_param = "poll" in query_params
+    has_tab_param = "tab" in query_params and query_params["tab"] == "team-voting"
+    
+    st.write(f"🔍 DEBUG - has_poll_param: {has_poll_param}, has_tab_param: {has_tab_param}")
+    
     # If coming from Slack with specific poll, show ONLY voting page
-    if "tab" in query_params and query_params["tab"] == "team-voting" and "poll" in query_params:
+    if has_tab_param and has_poll_param:
         # Direct voting mode - No sidebar, no tabs, just voting
         st.title("Learnapp Voting Tool")
         st.info("📬 You've been redirected from a Slack notification. Vote below! 👇")
+        
+        st.write("✅ DEBUG - Calling team_voting_page() directly")
         
         # Show ONLY the team voting page
         team_voting_page()
@@ -576,7 +587,7 @@ def main():
                 st.query_params.clear()
                 st.rerun()
         
-        # Don't show sidebar in this mode
+        # Don't show sidebar or tabs in this mode
         return
     
     # Normal mode with all features
