@@ -91,7 +91,7 @@ def save_uploaded_file(uploaded_file):
         return file_path
     return None
 
-def send_slack_notification(team, message):
+def send_slack_notification(team, message, poll_id=None, team_param=None):
     """Send notification to Slack using Bot Token"""
     
     # Check if Slack is enabled
@@ -113,8 +113,12 @@ def send_slack_notification(team, message):
         # Initialize Slack client
         client = WebClient(token=SLACK_BOT_TOKEN)
         
-        # Format message with team name and direct link to Team Voting tab using query parameter
-        voting_link = f"{APP_URL}?tab=team-voting"
+        # Format message with team name and direct link to Team Voting with poll ID and team
+        if poll_id and team_param:
+            voting_link = f"{APP_URL}?tab=team-voting&poll={poll_id}&team={team_param}"
+        else:
+            voting_link = f"{APP_URL}?tab=team-voting"
+        
         formatted_message = f"*{team} Team Update*\n{message}\n\n👉 <{voting_link}|Click here to vote>"
         
         # Send message
@@ -289,7 +293,10 @@ def create_vote_page():
         if 'theme_count' in st.session_state: st.session_state.theme_count = 1
         
         st.balloons(); st.success("Submission successful!")
-        send_slack_notification(team, f"🗳️ New submission from {submitter_name} for project '{project_name}' is ready for review.")
+        
+        # Send notification with team-specific voting link
+        team_param = team.lower().replace(" ", "-")  # "Graphic Team" -> "graphic-team"
+        send_slack_notification(team, f"🗳️ New submission from {submitter_name} for project '{project_name}' is ready for review.", poll_id, team_param)
 
 
 # --- UI HELPER FOR RENDERING CONTENT ---
