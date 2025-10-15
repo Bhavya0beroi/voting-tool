@@ -656,53 +656,71 @@ def results_page():
                     df = pd.DataFrame([dict(row) for row in votes])
 
                     if poll['vote_type'] == "Internal Shortlisting":
-                        st.write("Tally of 'Keep' votes:")
-                        keep_counts = df['item_id'].value_counts().reset_index()
-                        keep_counts.columns = ['Item', 'Keep Votes']
-                        
                         # Get the original content to show actual thumbnails and titles
                         content = json.loads(poll['content_json'])
                         thumbnails = content.get('thumbnails', {})
                         titles = content.get('titles', {})
                         
-                        # Display thumbnails with images
+                        keep_counts = df['item_id'].value_counts().reset_index()
+                        keep_counts.columns = ['Item', 'Keep Votes']
+                        
+                        # Get max votes for progress bar scaling
+                        max_votes = keep_counts['Keep Votes'].max() if not keep_counts.empty else 1
+                        
+                        # Display thumbnails with progress bars
                         if thumbnails:
-                            st.subheader("📸 Thumbnail Results")
-                            thumb_votes = keep_counts[keep_counts['Item'].str.startswith('Thumbnail')]
+                            st.markdown("### 📸 Thumbnail Voting Results")
+                            thumb_votes = keep_counts[keep_counts['Item'].str.startswith('Thumbnail')].sort_values('Keep Votes', ascending=False)
                             
                             if not thumb_votes.empty:
-                                for _, row in thumb_votes.iterrows():
-                                    item_name = row['Item']
-                                    vote_count = row['Keep Votes']
+                                # Create a grid layout - 2 thumbnails per row
+                                for i in range(0, len(thumb_votes), 2):
+                                    cols = st.columns(2)
                                     
-                                    with st.container(border=True):
-                                        col1, col2 = st.columns([1, 3])
-                                        with col1:
-                                            if item_name in thumbnails:
-                                                try:
-                                                    st.image(thumbnails[item_name], width=150)
-                                                except:
-                                                    st.error("Could not load image")
-                                        with col2:
-                                            st.markdown(f"### {item_name}")
-                                            st.metric("Votes Received", vote_count)
+                                    for idx, col in enumerate(cols):
+                                        if i + idx < len(thumb_votes):
+                                            row = thumb_votes.iloc[i + idx]
+                                            item_name = row['Item']
+                                            vote_count = row['Keep Votes']
+                                            percentage = (vote_count / max_votes) * 100
+                                            
+                                            with col:
+                                                with st.container(border=True):
+                                                    if item_name in thumbnails:
+                                                        try:
+                                                            st.image(thumbnails[item_name], use_container_width=True)
+                                                        except:
+                                                            st.error("Could not load image")
+                                                    
+                                                    st.markdown(f"**{item_name}**")
+                                                    st.progress(percentage / 100)
+                                                    st.markdown(f"**{vote_count}** votes ({percentage:.0f}%)")
                             else:
                                 st.info("No thumbnail votes yet")
+                            
+                            st.markdown("---")
                         
-                        # Display titles with actual text
+                        # Display titles with progress bars
                         if titles:
-                            st.subheader("📝 Title Results")
-                            title_votes = keep_counts[keep_counts['Item'].str.startswith('Title')]
+                            st.markdown("### 📝 Title Voting Results")
+                            title_votes = keep_counts[keep_counts['Item'].str.startswith('Title')].sort_values('Keep Votes', ascending=False)
                             
                             if not title_votes.empty:
                                 for _, row in title_votes.iterrows():
                                     item_name = row['Item']
                                     vote_count = row['Keep Votes']
                                     actual_title_text = titles.get(item_name, item_name)
+                                    percentage = (vote_count / max_votes) * 100
                                     
                                     with st.container(border=True):
-                                        st.markdown(f"### 💡 {actual_title_text}")
-                                        st.metric("Votes Received", vote_count)
+                                        col1, col2 = st.columns([3, 1])
+                                        with col1:
+                                            st.markdown(f"**💡 {actual_title_text}**")
+                                        with col2:
+                                            st.markdown(f"<div style='text-align: right; font-size: 1.5em; font-weight: bold; color: #1f77b4;'>{vote_count} votes</div>", unsafe_allow_html=True)
+                                        
+                                        st.progress(percentage / 100)
+                                        st.caption(f"{percentage:.0f}% of maximum votes")
                             else:
                                 st.info("No title votes yet")
                     else:
